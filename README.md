@@ -1,0 +1,127 @@
+# 数字化供应链物资协同与智能调度平台
+
+面向供应链协同和自然灾害应急采购场景的物资协同平台。系统围绕采购方、供应商、司机三类角色，提供登录鉴权、供应商物资管理、采购下单、采购方高并发抢购、订单推拉结合、司机出勤、三方履约评价和供应商排行榜等能力。
+
+## 技术栈
+
+- Java 21, Spring Boot 3.5
+- Spring Cloud Gateway, Nacos
+- MyBatis-Plus, MySQL
+- Redis, Redisson
+- RabbitMQ
+- 原生 HTML/CSS/JavaScript 前端
+
+## 模块说明
+
+- `common-lib`：公共响应体、常量、用户类型、异常模型。
+- `gateway-service`：统一网关入口，校验 Redis Token，并向下游服务透传用户身份请求头。
+- `auth-service`：登录、三角色业务接口、Redis 缓存、MQ 消费、抢购、评价、推送等核心逻辑。
+- `web-frontend`：三角色工作台页面，按用户类型展示不同业务功能。
+- `sql/init`：数据库建表和演示数据。
+
+## 核心能力
+
+- Redis Token 登录：Token 存 Redis Hash，实现多端登录和分布式登录态。
+- 三角色注册：按用户类型写入独立账号表和资料表，密码加密存储，注册成功自动登录。
+- Cache Aside：供应商目录读缓存，供应商物资写操作删除缓存并做延迟双删。
+- 采购版美团工作台：供应商店铺详情、物资菜单、搜索筛选、采购清单/询价单批量提交。
+- 订单闭环：供应商确认/拒单、库存扣减、司机接单、运输中、已完成、时间线追踪。
+- 高并发抢购：Redis + Lua 原子扣减名额，RabbitMQ 异步落库，Redisson 锁兜底。
+- 订单推拉结合：订单创建后按关注关系推送给司机；司机也可在订单大厅主动拉取。
+- 消息通知中心：按采购方、供应商、司机角色聚合订单、推送和 MQ 异常提醒。
+- Redis 数据结构：ZSet 做供应商履约排行榜，GEO 查询附近供应商，BitMap 记录司机出勤。
+- RabbitMQ 可靠性：订单创建/抢购消息异步处理，死信队列统计，推送补偿接口兜底。
+- 三方评价：采购方、供应商、司机围绕订单做履约评价，供应商评分同步回排行榜。
+
+## 本地启动
+
+### 1. 启动中间件
+
+本项目支持本地中间件或 Docker Compose。当前开发环境使用本地 MySQL、Redis、RabbitMQ、Nacos。
+配置项支持环境变量覆盖，首次运行可参考 `.env.example`。
+
+常用端口：
+
+- MySQL：`3306`
+- Redis：`6379`
+- RabbitMQ：`5672`
+- RabbitMQ Management：`15672`
+- Nacos：`8848`
+- Gateway：`8080`
+- Auth Service：`8081`
+- Frontend：`5173`
+
+### 2. 初始化数据库
+
+```bash
+cd "/Users/didi/Desktop/MaterialCoordination"
+mysql -uroot material_coordination < sql/init/01_schema.sql
+mysql -uroot material_coordination < sql/init/02_seed.sql
+```
+
+### 3. 启动后端
+
+```bash
+cd "/Users/didi/Desktop/MaterialCoordination"
+source use-java21.sh
+mvn -q -pl auth-service spring-boot:run
+```
+
+网关服务如果未启动：
+
+```bash
+source use-java21.sh
+mvn -q -pl gateway-service spring-boot:run
+```
+
+如果 RabbitMQ 使用 Docker Compose 默认配置，账号密码为 `.env.example` 中的 `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD`。
+
+### 4. 启动前端
+
+```bash
+cd "/Users/didi/Desktop/MaterialCoordination/web-frontend"
+python3 -m http.server 5173
+```
+
+访问：`http://localhost:5173`
+
+## 演示账号
+
+密码均为 `123456`。
+
+- 供应商：`supplier01`
+- 采购方：`purchaser01`
+- 司机：`driver01`
+
+## 关键接口
+
+- 登录：`POST /auth/login`
+- 注册：`POST /auth/register`
+- 当前用户：`GET /auth/me`
+- 供应商目录：`GET /api/suppliers/catalog`
+- 供应商店铺详情：`GET /api/suppliers/{supplierId}/store`
+- 供应商物资管理：`GET/POST/PUT /api/supplier/materials`
+- 采购下单：`POST /api/purchase-orders`
+- 采购清单批量提交：`POST /api/purchase-orders/cart/checkout`
+- 订单时间线：`GET /api/orders/{orderId}/timeline`
+- 供应商确认供货：`POST /api/supplier/orders/{orderId}/confirm`
+- 供应商拒单：`POST /api/supplier/orders/{orderId}/reject`
+- 采购方抢购：`POST /api/purchase-orders/{orderId}/panic-buy`
+- 消息通知中心：`GET /api/notifications`
+- 司机推送订单：`GET /api/transport-orders/push`
+- 司机我的运输单：`GET /api/transport-orders/mine`
+- 推送已读：`POST /api/transport-orders/push/{orderId}/read`
+- 司机抢运输单：`POST /api/transport-orders/{orderId}/claim`
+- 司机开始运输：`POST /api/transport-orders/{orderId}/start`
+- 司机完成运输：`POST /api/transport-orders/{orderId}/complete`
+- 订单评价：`POST /api/orders/{orderId}/reviews`
+- 供应商排行榜：`GET /api/suppliers/ranking`
+- 附近供应商：`GET /api/suppliers/nearby`
+- 司机出勤：`POST /api/drivers/attendance`
+- 死信队列统计：`GET /api/mq/dead-letters`
+
+## 架构文档
+
+详细架构、流程图和面试讲解话术见：[docs/architecture.md](docs/architecture.md)。
+
+接口清单见：[docs/api.md](docs/api.md)。

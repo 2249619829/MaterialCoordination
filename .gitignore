@@ -1,0 +1,28 @@
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Java build output
+target/
+*/target/
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+
+# Local middleware runtimes and downloaded archives
+middleware/
+*.zip
+
+# Frontend dependencies/build output
+node_modules/
+dist/
+
+# Local environment files
+.env
+.env.local
+application-local.yml

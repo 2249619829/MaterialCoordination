@@ -1,0 +1,11 @@
+{
+  "name": "material-coordination-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Enterprise SPA prototype for the material coordination platform.",
+  "scripts": {
+    "start": "python3 -m http.server 5173",
+    "serve": "python3 -m http.server 5173"
+  }
+}
