@@ -1,11 +1,10 @@
-import { apiBase, cartStorageKey } from "./js/config.js";
+import { apiBase, cartStorageKey, savedLoginStorageKey } from "./js/config.js";
 import { state } from "./js/state.js";
 import { allKnownOrders, filteredSuppliers, selectedSupplier } from "./js/selectors.js";
 import { captureFocus, escapeHtml, restoreFocus } from "./js/utils.js";
 import {
   appTemplate,
   defaultAuthUsername,
-  defaultRegisterDisplayName,
   defaultReviewText,
   loginTemplate,
 } from "./js/views.js";
@@ -154,6 +153,7 @@ async function handleLogin(event) {
   const userType = String(form.get("userType") || "").trim();
   const username = String(form.get("username") || "").trim();
   const password = String(form.get("password") || "").trim();
+  const rememberPassword = form.get("rememberPassword") === "on";
   if (!username || !password) {
     showToast("请输入用户名和密码");
     return;
@@ -171,6 +171,13 @@ async function handleLogin(event) {
     state.page = "home";
     localStorage.setItem("material_token", state.token);
     localStorage.setItem("material_user", JSON.stringify(state.user));
+    if (rememberPassword) {
+      state.savedLogin = { userType, username, password };
+      localStorage.setItem(savedLoginStorageKey, JSON.stringify(state.savedLogin));
+    } else {
+      state.savedLogin = null;
+      localStorage.removeItem(savedLoginStorageKey);
+    }
     await loadRoleData();
     showToast("登录成功，已进入对应角色工作台");
   } catch (error) {
@@ -591,11 +598,21 @@ function bindEvents() {
     });
     const userType = document.getElementById("userType");
     const username = document.getElementById("username");
+    const password = document.getElementById("password");
+    const rememberPassword = document.getElementById("rememberPassword");
     const displayName = document.getElementById("displayName");
+    const contactPhone = document.getElementById("contactPhone");
     userType?.addEventListener("change", () => {
-      username.value = defaultAuthUsername(userType.value);
-      if (displayName) {
-        displayName.value = defaultRegisterDisplayName(userType.value);
+      if (state.authMode === "login") {
+        const savedLogin = state.savedLogin?.userType === userType.value ? state.savedLogin : null;
+        username.value = savedLogin?.username || defaultAuthUsername(userType.value);
+        password.value = savedLogin?.password || "";
+        if (rememberPassword) rememberPassword.checked = Boolean(savedLogin);
+      } else {
+        username.value = "";
+        password.value = "";
+        if (displayName) displayName.value = "";
+        if (contactPhone) contactPhone.value = "";
       }
     });
     return;

@@ -13,6 +13,10 @@ import {
 } from "./selectors.js";
 
 export function loginTemplate() {
+  const activeUserType = state.authMode === "login" && state.savedLogin?.userType ? state.savedLogin.userType : "SUPPLIER";
+  const savedLogin = state.authMode === "login" && state.savedLogin?.userType === activeUserType ? state.savedLogin : null;
+  const usernameValue = state.authMode === "login" ? savedLogin?.username || defaultAuthUsername(activeUserType) : "";
+  const passwordValue = state.authMode === "login" ? savedLogin?.password || "" : "";
   return `
     <main class="login-screen">
       <section class="login-hero">
@@ -42,30 +46,40 @@ export function loginTemplate() {
             <div class="field">
               <label for="userType">用户类型</label>
               <select id="userType" name="userType">
-                <option value="SUPPLIER">供应商</option>
-                <option value="PURCHASER">采购方</option>
-                <option value="DRIVER">司机</option>
-                <option value="ADMIN">平台管理员</option>
+                <option value="SUPPLIER" ${activeUserType === "SUPPLIER" ? "selected" : ""}>供应商</option>
+                <option value="PURCHASER" ${activeUserType === "PURCHASER" ? "selected" : ""}>采购方</option>
+                <option value="DRIVER" ${activeUserType === "DRIVER" ? "selected" : ""}>司机</option>
+                <option value="ADMIN" ${activeUserType === "ADMIN" ? "selected" : ""}>平台管理员</option>
               </select>
             </div>
             <div class="field">
               <label for="username">用户名</label>
-              <input id="username" name="username" autocomplete="username" value="${defaultAuthUsername("SUPPLIER")}" />
+              <input id="username" name="username" autocomplete="username" value="${escapeHtml(usernameValue)}" />
             </div>
             <div class="field">
               <label for="password">密码</label>
-              <input id="password" name="password" type="password" autocomplete="current-password" value="123456" />
+              <input id="password" name="password" type="password" autocomplete="${state.authMode === "login" ? "current-password" : "new-password"}" value="${escapeHtml(passwordValue)}" />
             </div>
+            ${
+              state.authMode === "login"
+                ? `
+                  <label class="check-row" for="rememberPassword">
+                    <input id="rememberPassword" name="rememberPassword" type="checkbox" ${savedLogin ? "checked" : ""} />
+                    <span>保存密码</span>
+                  </label>
+                `
+                : ""
+            }
             ${
               state.authMode === "register"
                 ? `
                   <div class="field">
                     <label for="displayName">名称</label>
-                    <input id="displayName" name="displayName" autocomplete="organization" value="${defaultRegisterDisplayName("SUPPLIER")}" />
+                    <input id="displayName" name="displayName" autocomplete="organization" value="" />
                   </div>
                   <div class="field">
                     <label for="contactPhone">联系电话</label>
-                    <input id="contactPhone" name="contactPhone" autocomplete="tel" value="13800000000" />
+                    <input id="contactPhone" name="contactPhone" autocomplete="tel" value="" />
                   </div>
                 `
                 : ""
@@ -1002,27 +1016,10 @@ export function detailItem(label, value) {
 }
 
 export function defaultAuthUsername(userType) {
-  if (state.authMode === "login") {
-    return {
-      SUPPLIER: "supplier01",
-      PURCHASER: "purchaser01",
-      DRIVER: "driver01",
-      ADMIN: "admin01",
-    }[userType];
-  }
   return {
-    SUPPLIER: "supplier_new",
-    PURCHASER: "purchaser_new",
-    DRIVER: "driver_new",
-    ADMIN: "admin_new",
-  }[userType];
-}
-
-export function defaultRegisterDisplayName(userType) {
-  return {
-    SUPPLIER: "新注册供应商公司",
-    PURCHASER: "新注册采购公司",
-    DRIVER: "新注册司机",
-    ADMIN: "新注册管理员",
+    SUPPLIER: "supplier01",
+    PURCHASER: "purchaser01",
+    DRIVER: "driver01",
+    ADMIN: "admin01",
   }[userType];
 }

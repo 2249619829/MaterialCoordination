@@ -1,10 +1,20 @@
 import { loadStoredCart } from "./utils.js";
 
+function loadSavedLogin() {
+  try {
+    return JSON.parse(localStorage.getItem("material_saved_login") || "null") || null;
+  } catch (error) {
+    localStorage.removeItem("material_saved_login");
+    return null;
+  }
+}
+
 export const state = {
   page: "home",
   sidebarOpen: false,
   user: JSON.parse(localStorage.getItem("material_user") || "null") || null,
   token: localStorage.getItem("material_token") || "",
+  savedLogin: loadSavedLogin(),
   suppliers: [],
   purchaserOrders: [],
   supplierOrders: [],

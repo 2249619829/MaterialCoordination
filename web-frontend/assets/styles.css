@@ -250,6 +250,22 @@ button:disabled {
   box-shadow: 0 0 0 3px rgba(29, 111, 220, 0.12);
 }
 
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
 .btn {
   border: 0;
   border-radius: var(--radius-sm);

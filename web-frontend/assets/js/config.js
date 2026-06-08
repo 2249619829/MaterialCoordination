@@ -1,5 +1,6 @@
 export const apiBase = window.MATERIAL_API_BASE || "http://localhost:8080";
 export const cartStorageKey = "material_purchase_cart";
+export const savedLoginStorageKey = "material_saved_login";
 export const orderStatusFlow = ["待供应商确认", "待司机接单", "司机已接单", "运输中", "已完成"];
 
 export const roleMeta = {
