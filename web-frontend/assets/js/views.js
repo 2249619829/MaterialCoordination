@@ -233,7 +233,16 @@ export function renderPurchaserContent() {
 }
 
 export function renderSupplierContent() {
-  const self = state.suppliers.find((supplier) => supplier.id === state.user.id) || state.suppliers[0];
+  const self = state.suppliers.find((supplier) => supplier.id === state.user.id) || {
+    id: state.user.id,
+    companyName: state.user.displayName,
+    contactName: state.user.displayName,
+    region: "待完善",
+    address: "待完善",
+    rating: "4.50",
+    certifications: ["注册资料待完善"],
+    materials: [],
+  };
   if (state.page === "materials") {
     return supplierMaterialManager();
   }
@@ -246,7 +255,7 @@ export function renderSupplierContent() {
     <div class="dashboard-grid">
       ${statCard("供应货物", self?.materials.length || 0, "采购方可见")}
       ${statCard("供货订单", state.supplierOrders.length, "待备货 / 待运输")}
-      ${statCard("履约评分", self?.rating || "96.8", "平台评级")}
+      ${statCard("履约评分", self?.rating || "4.50", "平台评级")}
       ${statCard("资质数量", self?.certifications.length || 0, "已展示")}
     </div>
     ${mqPanel()}
