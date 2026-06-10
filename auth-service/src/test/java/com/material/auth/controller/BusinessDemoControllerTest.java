@@ -19,6 +19,12 @@ class BusinessDemoControllerTest {
             .standaloneSetup(new BusinessDemoController(businessDemoService))
             .build();
 
+    /**
+     * 作用：完成 driverCanClaimTransportOrderByOrderIdPathVariable 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void driverCanClaimTransportOrderByOrderIdPathVariable() throws Exception {
         String orderId = "PO-20260603-1001";
@@ -38,7 +44,14 @@ class BusinessDemoControllerTest {
                 "司机 1 已抢单",
                 1L,
                 null,
-                "2026-06-03 11:18"
+                "2026-06-03 11:18",
+                "待验收",
+                "运输完成后由采购方验收签收",
+                "",
+                "待付款",
+                "验收完成后由采购方登记付款凭证",
+                "",
+                ""
         ));
 
         mockMvc.perform(post("/api/transport-orders/{orderId}/claim", orderId)

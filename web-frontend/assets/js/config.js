@@ -1,5 +1,7 @@
 export const apiBase = window.MATERIAL_API_BASE || "http://localhost:8080";
 export const cartStorageKey = "material_purchase_cart";
+export const sessionTokenStorageKey = "material_token";
+export const sessionUserStorageKey = "material_user";
 export const savedLoginStorageKey = "material_saved_login";
 export const orderStatusFlow = ["待供应商确认", "待司机接单", "司机已接单", "运输中", "已完成"];
 
@@ -8,6 +10,7 @@ export const roleMeta = {
     label: "采购方",
     nav: [
       ["home", "供应商大厅"],
+      ["rfqs", "询价 RFQ"],
       ["orders", "我的采购订单"],
       ["profile", "采购方资料"],
     ],
@@ -17,6 +20,7 @@ export const roleMeta = {
     nav: [
       ["home", "供货工作台"],
       ["materials", "供应货物"],
+      ["rfqs", "询价报价"],
       ["orders", "我的供货订单"],
       ["profile", "企业资质"],
     ],

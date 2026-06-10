@@ -38,11 +38,23 @@ class TokenAuthGlobalFilterTest {
 
     private TokenAuthGlobalFilter filter;
 
+    /**
+     * 作用：修改当前对象的Up。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @BeforeEach
     void setUp() {
         filter = new TokenAuthGlobalFilter(redisTemplate, new GatewayExceptionHandler());
     }
 
+    /**
+     * 作用：完成 loginPathIsAllowedWithoutToken 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void loginPathIsAllowedWithoutToken() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -62,6 +74,12 @@ class TokenAuthGlobalFilterTest {
         verifyNoInteractions(redisTemplate);
     }
 
+    /**
+     * 作用：完成 optionsPreflightIsAllowedWithoutToken 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void optionsPreflightIsAllowedWithoutToken() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -81,6 +99,12 @@ class TokenAuthGlobalFilterTest {
         verifyNoInteractions(redisTemplate);
     }
 
+    /**
+     * 作用：完成 protectedPathWithoutTokenReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithoutTokenReturnsUnauthorized() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -98,6 +122,12 @@ class TokenAuthGlobalFilterTest {
         verifyNoInteractions(redisTemplate);
     }
 
+    /**
+     * 作用：完成 protectedPathWithMalformedAuthorizationHeaderReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithMalformedAuthorizationHeaderReturnsUnauthorized() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -113,6 +143,12 @@ class TokenAuthGlobalFilterTest {
         verifyNoInteractions(redisTemplate);
     }
 
+    /**
+     * 作用：完成 protectedPathWithValidTokenAddsUserHeaders 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithValidTokenAddsUserHeaders() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -143,6 +179,12 @@ class TokenAuthGlobalFilterTest {
         assertThat(headers.getFirst(AuthConstants.HEADER_DISPLAY_NAME)).isEqualTo("Acme Materials");
     }
 
+    /**
+     * 作用：完成 protectedPathWithValidTokenRefreshesTtl 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithValidTokenRefreshesTtl() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -162,6 +204,12 @@ class TokenAuthGlobalFilterTest {
         verify(redisTemplate).expire(redisKey, RedisConstants.LOGIN_TOKEN_TTL);
     }
 
+    /**
+     * 作用：完成 protectedPathWithExpiredTokenRefreshFailureReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithExpiredTokenRefreshFailureReturnsUnauthorized() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -176,6 +224,12 @@ class TokenAuthGlobalFilterTest {
         assertUnauthorized(exchange);
     }
 
+    /**
+     * 作用：完成 protectedPathWithRedisExpireErrorReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithRedisExpireErrorReturnsUnauthorized() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -191,6 +245,12 @@ class TokenAuthGlobalFilterTest {
         assertUnauthorized(exchange);
     }
 
+    /**
+     * 作用：完成 protectedPathWithSpoofedUserHeadersForwardsTrustedRedisHeadersOnly 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithSpoofedUserHeadersForwardsTrustedRedisHeadersOnly() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -223,6 +283,12 @@ class TokenAuthGlobalFilterTest {
         assertThat(headers.get(AuthConstants.HEADER_DISPLAY_NAME)).isNull();
     }
 
+    /**
+     * 作用：完成 protectedPathWithEmptyRedisHashReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithEmptyRedisHashReturnsUnauthorized() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -236,6 +302,12 @@ class TokenAuthGlobalFilterTest {
         assertUnauthorized(exchange);
     }
 
+    /**
+     * 作用：完成 protectedPathWithMissingRequiredUserFieldReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithMissingRequiredUserFieldReturnsUnauthorized() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -251,6 +323,12 @@ class TokenAuthGlobalFilterTest {
         assertUnauthorized(exchange);
     }
 
+    /**
+     * 作用：完成 protectedPathWithBlankRequiredUserFieldReturnsUnauthorized 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Test
     void protectedPathWithBlankRequiredUserFieldReturnsUnauthorized() {
         String redisKey = RedisConstants.LOGIN_TOKEN_KEY_PREFIX + "token-123";
@@ -266,10 +344,22 @@ class TokenAuthGlobalFilterTest {
         assertUnauthorized(exchange);
     }
 
+    /**
+     * 作用：完成 notCalledChain 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 GatewayFilterChain，也就是这个方法处理后的结果。
+     */
     private static GatewayFilterChain notCalledChain() {
         return exchange -> Mono.error(new AssertionError("filter chain should not be called"));
     }
 
+    /**
+     * 作用：完成 authenticatedExchange 这一步处理。
+     * 输入：
+     * - token：登录 Token，用来证明用户已经登录。
+     * 输出：返回 MockServerWebExchange，也就是这个方法处理后的结果。
+     */
     private static MockServerWebExchange authenticatedExchange(String token) {
         return MockServerWebExchange.from(
                 MockServerHttpRequest.get("/orders")
@@ -278,12 +368,24 @@ class TokenAuthGlobalFilterTest {
         );
     }
 
+    /**
+     * 作用：完成 assertUnauthorized 这一步处理。
+     * 输入：
+     * - exchange：当前网关请求对象，里面有请求路径、请求头和响应信息。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     private static void assertUnauthorized(MockServerWebExchange exchange) {
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(exchange.getResponse().getBodyAsString().block())
                 .isEqualTo("{\"code\":401,\"message\":\"unauthorized\",\"data\":null}");
     }
 
+    /**
+     * 作用：完成 loginUser 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Map<String, String>，也就是键值对数据；可以通过 key 找到对应的 value。
+     */
     private static Map<String, String> loginUser() {
         Map<String, String> loginUser = new LinkedHashMap<>();
         loginUser.put("id", "7");
@@ -293,6 +395,12 @@ class TokenAuthGlobalFilterTest {
         return loginUser;
     }
 
+    /**
+     * 作用：完成 loginUserWithoutDisplayName 这一步处理。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Map<String, String>，也就是键值对数据；可以通过 key 找到对应的 value。
+     */
     private static Map<String, String> loginUserWithoutDisplayName() {
         Map<String, String> loginUser = loginUser();
         loginUser.remove("displayName");

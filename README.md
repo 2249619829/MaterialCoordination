@@ -35,6 +35,10 @@
 
 ## 本地启动
 
+更完整的启动、验证和排障步骤见：[docs/startup.md](docs/startup.md)。
+
+Windows / WSL2 迁移启动步骤见：[docs/windows-setup.md](docs/windows-setup.md)。
+
 ### 1. 启动中间件
 
 本项目支持本地中间件或 Docker Compose。当前开发环境使用本地 MySQL、Redis、RabbitMQ、Nacos。
@@ -57,6 +61,7 @@
 cd "/Users/didi/Desktop/MaterialCoordination"
 mysql -uroot material_coordination < sql/init/01_schema.sql
 mysql -uroot material_coordination < sql/init/02_seed.sql
+mysql -uroot material_coordination < sql/init/03_order_timeline.sql
 ```
 
 ### 3. 启动后端
@@ -125,3 +130,5 @@ python3 -m http.server 5173
 详细架构、流程图和面试讲解话术见：[docs/architecture.md](docs/architecture.md)。
 
 接口清单见：[docs/api.md](docs/api.md)。
+
+JMeter 压测报告见：[docs/performance.md](docs/performance.md)。

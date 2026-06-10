@@ -1,5 +1,7 @@
 package com.material.auth.dto.business;
 
+import java.util.List;
+
 public record AdminSupplierAuditView(
         Long supplierId,
         String companyName,
@@ -10,6 +12,10 @@ public record AdminSupplierAuditView(
         String ratingScore,
         Integer status,
         String auditStatus,
+        String auditStatusCode,
+        String auditRemark,
+        Integer qualificationCompletion,
+        List<String> riskTags,
         Long materialCount,
         Long stockQuantity
 ) {

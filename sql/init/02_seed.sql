@@ -15,13 +15,15 @@ ON DUPLICATE KEY UPDATE
 
 SET @purchaser_id = (SELECT id FROM purchaser_account WHERE username = 'purchaser01');
 
-INSERT INTO purchaser_profile (purchaser_id, company_name, contact_name, contact_phone, address)
-VALUES (@purchaser_id, 'Shanghai Material Purchaser Co., Ltd.', 'Purchaser Contact', '13800000001', 'Shanghai, China')
+INSERT INTO purchaser_profile (purchaser_id, company_name, contact_name, contact_phone, address, longitude, latitude)
+VALUES (@purchaser_id, 'Shanghai Material Purchaser Co., Ltd.', 'Purchaser Contact', '13800000001', 'Shanghai, China', 121.470000, 31.230000)
 ON DUPLICATE KEY UPDATE
     company_name = 'Shanghai Material Purchaser Co., Ltd.',
     contact_name = 'Purchaser Contact',
     contact_phone = '13800000001',
-    address = 'Shanghai, China';
+    address = 'Shanghai, China',
+    longitude = 121.470000,
+    latitude = 31.230000;
 
 INSERT INTO supplier_account (username, password_hash, status)
 VALUES ('supplier01', @seed_password_hash, 1)
@@ -40,7 +42,12 @@ INSERT INTO supplier_profile (
     address,
     longitude,
     latitude,
-    rating_score
+    rating_score,
+    business_license_url,
+    safety_cert_url,
+    insurance_cert_url,
+    audit_status,
+    audit_remark
 )
 VALUES (
     @supplier_id,
@@ -51,7 +58,12 @@ VALUES (
     'Pudong New Area, Shanghai, China',
     121.544000,
     31.221000,
-    4.80
+    4.80,
+    'https://files.example.com/supplier01-license.pdf',
+    'https://files.example.com/supplier01-safety.pdf',
+    'https://files.example.com/supplier01-insurance.pdf',
+    'APPROVED',
+    '种子供应商资质已通过'
 )
 ON DUPLICATE KEY UPDATE
     company_name = 'Shanghai Reliable Supplier Co., Ltd.',
@@ -61,7 +73,12 @@ ON DUPLICATE KEY UPDATE
     address = 'Pudong New Area, Shanghai, China',
     longitude = 121.544000,
     latitude = 31.221000,
-    rating_score = 4.80;
+    rating_score = 4.80,
+    business_license_url = 'https://files.example.com/supplier01-license.pdf',
+    safety_cert_url = 'https://files.example.com/supplier01-safety.pdf',
+    insurance_cert_url = 'https://files.example.com/supplier01-insurance.pdf',
+    audit_status = 'APPROVED',
+    audit_remark = '种子供应商资质已通过';
 
 INSERT INTO driver_account (username, password_hash, status)
 VALUES ('driver01', @seed_password_hash, 1)
@@ -176,13 +193,15 @@ ON DUPLICATE KEY UPDATE
 
 SET @purchaser2_id = (SELECT id FROM purchaser_account WHERE username = 'purchaser02');
 
-INSERT INTO purchaser_profile (purchaser_id, company_name, contact_name, contact_phone, address)
-VALUES (@purchaser2_id, 'Jiangsu Emergency Construction Group', '周主管', '13800000011', '江苏省南京市江宁应急物资中心')
+INSERT INTO purchaser_profile (purchaser_id, company_name, contact_name, contact_phone, address, longitude, latitude)
+VALUES (@purchaser2_id, 'Jiangsu Emergency Construction Group', '周主管', '13800000011', '江苏省南京市江宁应急物资中心', 118.820000, 31.950000)
 ON DUPLICATE KEY UPDATE
     company_name = 'Jiangsu Emergency Construction Group',
     contact_name = '周主管',
     contact_phone = '13800000011',
-    address = '江苏省南京市江宁应急物资中心';
+    address = '江苏省南京市江宁应急物资中心',
+    longitude = 118.820000,
+    latitude = 31.950000;
 
 INSERT INTO supplier_account (username, password_hash, status)
 VALUES ('supplier02', @seed_password_hash, 1)
@@ -201,7 +220,12 @@ INSERT INTO supplier_profile (
     address,
     longitude,
     latitude,
-    rating_score
+    rating_score,
+    business_license_url,
+    safety_cert_url,
+    insurance_cert_url,
+    audit_status,
+    audit_remark
 )
 VALUES (
     @supplier2_id,
@@ -212,7 +236,12 @@ VALUES (
     '江苏省南京市江宁仓',
     118.840000,
     31.950000,
-    4.62
+    4.62,
+    'https://files.example.com/supplier02-license.pdf',
+    'https://files.example.com/supplier02-safety.pdf',
+    'https://files.example.com/supplier02-insurance.pdf',
+    'APPROVED',
+    '种子供应商资质已通过'
 )
 ON DUPLICATE KEY UPDATE
     company_name = 'Jiangsu Emergency Materials Group',
@@ -222,7 +251,12 @@ ON DUPLICATE KEY UPDATE
     address = '江苏省南京市江宁仓',
     longitude = 118.840000,
     latitude = 31.950000,
-    rating_score = 4.62;
+    rating_score = 4.62,
+    business_license_url = 'https://files.example.com/supplier02-license.pdf',
+    safety_cert_url = 'https://files.example.com/supplier02-safety.pdf',
+    insurance_cert_url = 'https://files.example.com/supplier02-insurance.pdf',
+    audit_status = 'APPROVED',
+    audit_remark = '种子供应商资质已通过';
 
 INSERT INTO driver_account (username, password_hash, status)
 VALUES ('driver02', @seed_password_hash, 1)

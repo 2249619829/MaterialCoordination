@@ -38,3 +38,7 @@ mybatis-plus:
     map-underscore-to-camel-case: true
   global-config:
     banner: false
+
+geocoding:
+  nominatim:
+    base-url: ${GEOCODING_NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}

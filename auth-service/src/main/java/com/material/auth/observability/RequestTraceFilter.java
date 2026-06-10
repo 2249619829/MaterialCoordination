@@ -20,6 +20,14 @@ import java.util.UUID;
 public class RequestTraceFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RequestTraceFilter.class);
 
+    /**
+     * 作用：完成 doFilterInternal 这一步处理。
+     * 输入：
+     * - request：前端传来的请求数据对象，里面包含本次操作需要的信息。
+     * - response：接口返回对象，方法会把结果写到这里。
+     * - filterChain：Filter Chain，类型是 FilterChain；方法会读取这个值继续处理。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -44,6 +52,12 @@ public class RequestTraceFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * 作用：读取请求追踪 ID；如果没有，就生成一个新的。
+     * 输入：
+     * - request：前端传来的请求数据对象，里面包含本次操作需要的信息。
+     * 输出：返回 String，也就是一段文本结果。
+     */
     private String resolveTraceId(HttpServletRequest request) {
         String traceId = request.getHeader(TraceConstants.TRACE_ID_HEADER);
         if (StringUtils.hasText(traceId)) {

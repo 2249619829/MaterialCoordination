@@ -6,12 +6,19 @@ import {
   filteredSuppliers,
   notificationClass,
   selectedSupplier,
+  supplierFromList,
   supplierCategories,
   supplierMinPrice,
   supplierTotalStock,
   unreadNotificationCount,
 } from "./selectors.js";
 
+/**
+ * 作用：生成登录页 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function loginTemplate() {
   const activeUserType = state.authMode === "login" && state.savedLogin?.userType ? state.savedLogin.userType : "SUPPLIER";
   const savedLogin = state.authMode === "login" && state.savedLogin?.userType === activeUserType ? state.savedLogin : null;
@@ -81,9 +88,25 @@ export function loginTemplate() {
                     <label for="contactPhone">联系电话</label>
                     <input id="contactPhone" name="contactPhone" autocomplete="tel" value="" />
                   </div>
+                  <div class="field">
+                    <label for="registerAddress">地址</label>
+                    <input id="registerAddress" name="address" autocomplete="street-address" placeholder="采购方/供应商必填，例如：北京交通大学" />
+                    <div class="field-help">提交后由后端自动获取经纬度；获取失败时请手动填写。</div>
+                  </div>
+                  <div class="form-split">
+                    <div class="field">
+                      <label for="registerLongitude">经度</label>
+                      <input id="registerLongitude" name="longitude" inputmode="decimal" placeholder="自动获取失败时填写" />
+                    </div>
+                    <div class="field">
+                      <label for="registerLatitude">纬度</label>
+                      <input id="registerLatitude" name="latitude" inputmode="decimal" placeholder="自动获取失败时填写" />
+                    </div>
+                  </div>
                 `
                 : ""
             }
+            ${state.authError ? `<div class="auth-error" role="alert">${escapeHtml(state.authError)}</div>` : ""}
             <button class="btn btn-primary" type="submit" ${state.loginLoading ? "disabled" : ""}>
               ${state.loginLoading ? "处理中..." : state.authMode === "login" ? "登录" : "注册并登录"}
             </button>
@@ -97,6 +120,12 @@ export function loginTemplate() {
   `;
 }
 
+/**
+ * 作用：生成应用主界面 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function appTemplate() {
   const meta = roleMeta[state.user.userType] || roleMeta.SUPPLIER;
   const pageTitle = meta.nav.find(([id]) => id === state.page)?.[1] || meta.nav[0][1];
@@ -141,19 +170,28 @@ export function appTemplate() {
             </div>
             <div class="avatar">${escapeHtml(state.user.displayName).slice(0, 1)}</div>
           </div>
+          <button class="btn btn-danger btn-sm" type="button" data-logout>退出登录</button>
         </header>
-        ${state.showNotifications ? notificationCenterPanel() : ""}
         <section class="content">
           ${renderRoleContent()}
         </section>
+        ${state.showNotifications ? `<div class="notification-popover">${notificationCenterPanel()}</div>` : ""}
       </main>
       <div class="toast ${state.toast ? "show" : ""}">${escapeHtml(state.toast)}</div>
       ${reviewModalTemplate()}
+      ${acceptanceModalTemplate()}
+      ${paymentModalTemplate()}
       ${timelineModalTemplate()}
     </div>
   `;
 }
 
+/**
+ * 作用：根据当前用户角色生成中间内容区。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderRoleContent() {
   if (state.loading) return '<div class="panel"><div class="panel-body empty">加载中...</div></div>';
   if (state.user.userType === "ADMIN") return renderAdminContent();
@@ -162,6 +200,12 @@ export function renderRoleContent() {
   return renderSupplierContent();
 }
 
+/**
+ * 作用：生成管理员工作台内容。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderAdminContent() {
   if (state.page === "suppliers") {
     return adminSupplierPanel();
@@ -190,9 +234,18 @@ export function renderAdminContent() {
   `;
 }
 
+/**
+ * 作用：生成采购方工作台内容。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderPurchaserContent() {
   if (state.page === "orders") {
     return ordersPanel("我的采购订单", "采购方和供应商都能看到自己的订单状态。", state.purchaserOrders);
+  }
+  if (state.page === "rfqs") {
+    return purchaserRfqPanel();
   }
   if (state.page === "drivers") {
     return `
@@ -207,7 +260,7 @@ export function renderPurchaserContent() {
   if (state.page === "profile") return profilePanel("采购方资料", "采购需求发布、供应商沟通、订单状态跟踪。");
 
   const suppliers = filteredSuppliers();
-  const supplier = selectedSupplier();
+  const supplier = supplierFromList(suppliers, state.selectedSupplierId);
   return `
     ${rankingPanel()}
     ${nearbySuppliersPanel()}
@@ -232,6 +285,12 @@ export function renderPurchaserContent() {
   `;
 }
 
+/**
+ * 作用：生成供应商工作台内容。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderSupplierContent() {
   const self = state.suppliers.find((supplier) => supplier.id === state.user.id) || {
     id: state.user.id,
@@ -246,10 +305,13 @@ export function renderSupplierContent() {
   if (state.page === "materials") {
     return supplierMaterialManager();
   }
+  if (state.page === "rfqs") {
+    return supplierRfqPanel();
+  }
   if (state.page === "orders") {
     return ordersPanel("我的供货订单", "只展示属于当前供应商的订单状态。", state.supplierOrders);
   }
-  if (state.page === "profile") return profilePanel("企业资质", "营业执照、履约评分、服务区域和供货能力。");
+  if (state.page === "profile") return supplierQualificationPanel();
 
   return `
     <div class="dashboard-grid">
@@ -263,8 +325,13 @@ export function renderSupplierContent() {
   `;
 }
 
+/**
+ * 作用：生成供应商物资管理区域 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成供应商物资管理区域。
+ */
 export function supplierMaterialManager() {
-  const firstOption = state.materialOptions[0];
   return `
     <div class="layout-2">
       <div class="panel">
@@ -281,37 +348,498 @@ export function supplierMaterialManager() {
         </div>
       </div>
       <aside class="panel detail-drawer">
-        <div class="panel-head"><div><h2>新增供货物资</h2><div class="muted">选择基础物资后填写供应能力。</div></div></div>
+        <div class="panel-head"><div><h2>新增供货物资</h2><div class="muted">可选择基础物资，也可以直接输入新物资并上架。</div></div></div>
         <form class="panel-body form-grid" id="supplierMaterialForm">
           <div class="field">
-            <label for="materialId">物资</label>
-            <select id="materialId" name="materialId">
+            <label for="materialId">已有物资</label>
+            <select id="materialId" name="materialId" ${state.materialOptions.length ? "" : "disabled"}>
+              <option value="">${state.materialOptions.length ? "选择已有物资，或填写下方新物资" : "暂无基础物资，请直接填写新物资"}</option>
               ${state.materialOptions.map((item) => `<option value="${item.id}">${escapeHtml(item.materialName)} / ${escapeHtml(item.unit)}</option>`).join("")}
             </select>
           </div>
+          <div class="form-note">没有合适的基础物资时，直接填写下面三项；系统会先写入物资基础表，再上架到你的供应目录。</div>
+          <div class="field">
+            <label for="materialName">新物资名称</label>
+            <input id="materialName" name="materialName" list="materialNameHints" placeholder="例如：应急帐篷、瓶装饮用水、柴油发电机" />
+            <datalist id="materialNameHints">
+              <option value="应急帐篷"></option>
+              <option value="瓶装饮用水"></option>
+              <option value="柴油发电机"></option>
+              <option value="防汛沙袋"></option>
+            </datalist>
+          </div>
+          <div class="form-split">
+            <div class="field">
+              <label for="materialCategory">分类</label>
+              <input id="materialCategory" name="category" list="materialCategoryHints" placeholder="例如：应急物资" />
+              <datalist id="materialCategoryHints">
+                <option value="应急物资"></option>
+                <option value="水泥"></option>
+                <option value="钢材"></option>
+                <option value="食品饮水"></option>
+                <option value="设备"></option>
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="materialUnit">单位</label>
+              <input id="materialUnit" name="unit" list="materialUnitHints" placeholder="例如：件、吨、箱" />
+              <datalist id="materialUnitHints">
+                <option value="件"></option>
+                <option value="吨"></option>
+                <option value="箱"></option>
+                <option value="卷"></option>
+                <option value="车"></option>
+              </datalist>
+            </div>
+          </div>
           <div class="field">
             <label for="supplyPrice">价格</label>
-            <input id="supplyPrice" name="supplyPrice" type="number" min="0" step="0.01" value="860" />
+            <div class="input-with-unit">
+              <input id="supplyPrice" name="supplyPrice" inputmode="decimal" placeholder="例如：849.98" />
+              <span id="priceUnit">元/单位</span>
+            </div>
           </div>
           <div class="field">
             <label for="stockQuantity">库存</label>
-            <input id="stockQuantity" name="stockQuantity" type="number" min="0" step="1" value="300" />
+            <div class="input-with-unit">
+              <input id="stockQuantity" name="stockQuantity" inputmode="numeric" placeholder="例如：300" />
+              <span id="stockUnit">单位</span>
+            </div>
           </div>
           <div class="field">
             <label for="dailyCapacity">日产能</label>
-            <input id="dailyCapacity" name="dailyCapacity" type="number" min="0" step="1" value="80" />
+            <div class="input-with-unit">
+              <input id="dailyCapacity" name="dailyCapacity" inputmode="numeric" placeholder="例如：80" />
+              <span id="capacityUnit">单位/日</span>
+            </div>
           </div>
           <div class="field">
             <label for="deliveryRadiusKm">配送半径 KM</label>
-            <input id="deliveryRadiusKm" name="deliveryRadiusKm" type="number" min="0" step="0.01" value="180" />
+            <div class="input-with-unit">
+              <input id="deliveryRadiusKm" name="deliveryRadiusKm" inputmode="decimal" placeholder="例如：180" />
+              <span>KM</span>
+            </div>
           </div>
-          <button class="btn btn-primary" type="submit" ${firstOption ? "" : "disabled"}>新增 / 重新上架</button>
+          <button class="btn btn-primary" type="submit">新增 / 重新上架</button>
         </form>
       </aside>
     </div>
   `;
 }
 
+/**
+ * 作用：生成供应商企业资质维护页面。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成企业资质页面。
+ */
+export function supplierQualificationPanel() {
+  const qualification = state.supplierQualification || {};
+  const risks = qualification.riskTags || ["资质资料待完善"];
+  return `
+    <div class="dashboard-grid">
+      ${statCard("审核状态", qualification.auditStatusText || "待完善", qualification.auditRemark || "提交后管理员复核")}
+      ${statCard("资料完整度", `${qualification.qualificationCompletion ?? 0}%`, "证照 / 地址 / 联系方式")}
+      ${statCard("风险项", risks.filter((item) => item !== "资质资料完整").length, "管理员审核可见")}
+      ${statCard("供应货物", state.supplierMaterials.length, "影响准入判断")}
+    </div>
+    <div class="layout-2">
+      <div class="panel">
+        <div class="panel-head">
+          <div><h2>企业资质资料</h2><div class="muted">保存后会进入待复核，管理员审核页会同步显示完整度和风险项。</div></div>
+          <span class="chip ${qualificationStatusClass(qualification.auditStatus)}">${escapeHtml(qualification.auditStatusText || "待完善")}</span>
+        </div>
+        <form class="panel-body form-grid" id="supplierQualificationForm">
+          <div class="form-split">
+            <div class="field">
+              <label for="qualificationCompanyName">企业名称</label>
+              <input id="qualificationCompanyName" name="companyName" value="${escapeHtml(qualification.companyName || state.user.displayName)}" />
+            </div>
+            <div class="field">
+              <label for="qualificationLicenseNo">营业执照编号</label>
+              <input id="qualificationLicenseNo" name="licenseNo" value="${escapeHtml(qualification.licenseNo || "")}" />
+            </div>
+          </div>
+          <div class="form-split">
+            <div class="field">
+              <label for="qualificationContactName">联系人</label>
+              <input id="qualificationContactName" name="contactName" value="${escapeHtml(qualification.contactName || state.user.displayName)}" />
+            </div>
+            <div class="field">
+              <label for="qualificationContactPhone">联系电话</label>
+              <input id="qualificationContactPhone" name="contactPhone" inputmode="tel" value="${escapeHtml(qualification.contactPhone || "")}" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="qualificationAddress">经营地址</label>
+            <input id="qualificationAddress" name="address" value="${escapeHtml(qualification.address || "")}" />
+            <div class="field-help">保存时由后端按经营地址自动获取经纬度；获取失败时请手动填写。</div>
+          </div>
+          <div class="form-split">
+            <div class="field">
+              <label for="qualificationLongitude">服务经度</label>
+              <input id="qualificationLongitude" name="longitude" inputmode="decimal" value="${escapeHtml(qualification.longitude ?? "")}" />
+            </div>
+            <div class="field">
+              <label for="qualificationLatitude">服务纬度</label>
+              <input id="qualificationLatitude" name="latitude" inputmode="decimal" value="${escapeHtml(qualification.latitude ?? "")}" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="businessLicenseUrl">营业执照附件 URL</label>
+            <input id="businessLicenseUrl" name="businessLicenseUrl" value="${escapeHtml(qualification.businessLicenseUrl || "")}" placeholder="https://files.example.com/license.pdf" />
+          </div>
+          <div class="field">
+            <label for="safetyCertUrl">安全生产证明 URL</label>
+            <input id="safetyCertUrl" name="safetyCertUrl" value="${escapeHtml(qualification.safetyCertUrl || "")}" placeholder="https://files.example.com/safety.pdf" />
+          </div>
+          <div class="field">
+            <label for="insuranceCertUrl">履约保险证明 URL</label>
+            <input id="insuranceCertUrl" name="insuranceCertUrl" value="${escapeHtml(qualification.insuranceCertUrl || "")}" placeholder="https://files.example.com/insurance.pdf" />
+          </div>
+          ${actionButton("supplier-qualification", "true", "保存并提交复核", "btn-primary", "supplier-qualification")}
+        </form>
+      </div>
+      <aside class="panel detail-drawer">
+        <div class="panel-head"><div><h2>准入检查</h2><div class="muted">这些信息会辅助管理员判断供应商是否可参与报价。</div></div></div>
+        <div class="panel-body qualification-summary">
+          <div class="qualification-meter">
+            <div><strong>${qualification.qualificationCompletion ?? 0}%</strong><span>资料完整度</span></div>
+            <div class="progress"><span style="width:${Math.max(0, Math.min(100, Number(qualification.qualificationCompletion || 0)))}%"></span></div>
+          </div>
+          <div class="risk-list">
+            ${risks.map((risk) => `<span class="chip ${risk === "资质资料完整" ? "green" : "amber"}">${escapeHtml(risk)}</span>`).join("")}
+          </div>
+          <div class="form-note">${escapeHtml(qualification.auditRemark || "暂无审核备注。")}</div>
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+/**
+ * 作用：生成采购方询价管理页面。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成采购方 RFQ 页面。
+ */
+export function purchaserRfqPanel() {
+  const selectedRfq = state.purchaserRfqs.find((item) => item.id === state.selectedRfqId) || state.purchaserRfqs[0] || null;
+  const quoteTitle = selectedRfq
+    ? `${selectedRfq.materialName} · ${selectedRfq.quantity}`
+    : "报价排序";
+  return `
+    <div class="dashboard-grid">
+      ${statCard("询价单", state.purchaserRfqs.length, "多供应商报价")}
+      ${statCard("开放中", state.purchaserRfqs.filter((item) => item.status === "OPEN").length, "可继续收报价")}
+      ${statCard("报价数", state.purchaserRfqs.reduce((total, item) => total + Number(item.quoteCount || 0), 0), "按综合条件排序")}
+      ${statCard("已采纳", state.purchaserRfqs.filter((item) => item.status === "AWARDED").length, "生成采购订单")}
+    </div>
+    <div class="layout-2 rfq-layout">
+      <div class="panel">
+        <div class="panel-head">
+          <div><h2>发布询价</h2><div class="muted">采购方发布需求后，供应商在报价页选择自己的上架物资并提交报价。</div></div>
+        </div>
+        <form class="panel-body form-grid" id="rfqForm">
+          <div class="form-split">
+            <div class="field">
+              <label for="rfqMaterialName">物资名称</label>
+              <input id="rfqMaterialName" name="materialName" list="rfqMaterialHints" placeholder="例如：瓶装饮用水" />
+              <datalist id="rfqMaterialHints">
+                <option value="瓶装饮用水"></option>
+                <option value="应急帐篷"></option>
+                <option value="防汛沙袋"></option>
+                <option value="柴油发电机"></option>
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="rfqCategory">分类</label>
+              <input id="rfqCategory" name="category" list="rfqCategoryHints" placeholder="例如：食品饮水" />
+              <datalist id="rfqCategoryHints">
+                <option value="食品饮水"></option>
+                <option value="应急物资"></option>
+                <option value="设备"></option>
+                <option value="钢材"></option>
+              </datalist>
+            </div>
+          </div>
+          <div class="form-split">
+            <div class="field">
+              <label for="rfqUnit">单位</label>
+              <input id="rfqUnit" name="unit" list="rfqUnitHints" placeholder="例如：箱" />
+              <datalist id="rfqUnitHints">
+                <option value="箱"></option>
+                <option value="件"></option>
+                <option value="吨"></option>
+                <option value="车"></option>
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="rfqQuantity">采购数量</label>
+              <input id="rfqQuantity" name="quantity" inputmode="decimal" placeholder="例如：80 箱" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="rfqDeliveryAddress">收货地址</label>
+            <input id="rfqDeliveryAddress" name="deliveryAddress" placeholder="例如：北京交通大学" />
+            <div class="field-help" id="rfqGeocodeStatus">提交后由后端自动获取经纬度，必要时可手动修正。</div>
+          </div>
+          <div class="form-split">
+            <div class="field">
+              <label for="rfqLongitude">经度</label>
+              <input id="rfqLongitude" name="longitude" inputmode="decimal" placeholder="后端自动获取失败时填写" />
+            </div>
+            <div class="field">
+              <label for="rfqLatitude">纬度</label>
+              <input id="rfqLatitude" name="latitude" inputmode="decimal" placeholder="后端自动获取失败时填写" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="rfqRemark">需求备注</label>
+            <textarea id="rfqRemark" name="remark" rows="3" placeholder="例如：希望今天报价，明天送达。"></textarea>
+          </div>
+          ${actionButton("create-rfq", "true", "发布询价", "btn-primary", "create-rfq")}
+        </form>
+      </div>
+      <aside class="panel detail-drawer">
+        <div class="panel-head">
+          <div><h2>我的询价单</h2><div class="muted">点击询价单查看供应商报价排序。</div></div>
+          <button class="btn btn-ghost btn-sm" id="refreshData">刷新</button>
+        </div>
+        <div class="panel-body rfq-list">
+          ${state.purchaserRfqs.length ? state.purchaserRfqs.map(renderPurchaserRfqCard).join("") : '<div class="empty">暂无询价单，先从左侧发布一个需求。</div>'}
+        </div>
+      </aside>
+    </div>
+    <div class="panel rfq-quotes-panel">
+      <div class="panel-head">
+        <div><h2>${escapeHtml(quoteTitle)}</h2><div class="muted">报价按单价、交付天数、可供数量和供应商评分综合排序。</div></div>
+        ${selectedRfq ? `<span class="chip ${rfqStatusClass(selectedRfq.status)}">${escapeHtml(rfqStatusText(selectedRfq.status))}</span>` : ""}
+      </div>
+      <div class="panel-body rfq-quote-grid">
+        ${
+          selectedRfq
+            ? state.selectedRfqQuotes.length
+              ? state.selectedRfqQuotes.map((quote) => renderRfqQuoteCard(quote, selectedRfq)).join("")
+              : '<div class="empty">还没有供应商报价。可以打开供应商页面登录后提交报价。</div>'
+            : '<div class="empty">选择一个询价单后查看报价。</div>'
+        }
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 作用：生成采购方询价单卡片。
+ * 输入：
+ * - rfq：询价单对象。
+ * 输出：返回 HTML 字符串。
+ */
+export function renderPurchaserRfqCard(rfq) {
+  const selected = rfq.id === state.selectedRfqId;
+  return `
+    <article class="order-card rfq-card ${selected ? "urgent" : ""}">
+      <div class="order-top">
+        <div class="order-title">
+          <strong>${escapeHtml(rfq.materialName)}</strong>
+          <span>${escapeHtml(rfq.quantity)} · ${escapeHtml(rfq.deliveryAddress)}</span>
+        </div>
+        <span class="chip ${rfqStatusClass(rfq.status)}">${escapeHtml(rfqStatusText(rfq.status))}</span>
+      </div>
+      <div class="order-meta">
+        <span class="chip">${escapeHtml(rfq.category)}</span>
+        <span class="chip">${escapeHtml(rfq.unit)}</span>
+        <span class="chip blue">${Number(rfq.quoteCount || 0)} 个报价</span>
+      </div>
+      ${
+        rfq.bestQuote
+          ? `<div class="rfq-best">当前最低：¥ ${escapeHtml(rfq.bestQuote.unitPrice)} · ${escapeHtml(rfq.bestQuote.supplierName)} · ${escapeHtml(rfq.bestQuote.deliveryDays)} 天</div>`
+          : '<div class="muted">等待供应商报价。</div>'
+      }
+      <div class="order-actions">
+        <button class="btn ${selected ? "btn-primary" : "btn-ghost"} btn-sm" data-view-rfq-quotes="${rfq.id}">
+          ${selected ? "正在查看" : "查看报价"}
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+/**
+ * 作用：生成单条 RFQ 报价卡片。
+ * 输入：
+ * - quote：报价对象。
+ * - rfq：询价单对象。
+ * 输出：返回 HTML 字符串。
+ */
+export function renderRfqQuoteCard(quote, rfq) {
+  const canAccept = rfq.status === "OPEN" && quote.status === "ACTIVE";
+  return `
+    <article class="task-card rfq-quote-card">
+      <div class="order-top">
+        <div class="order-title">
+          <strong>${escapeHtml(quote.supplierName)}</strong>
+          <span>${escapeHtml(quote.materialName)} · ${escapeHtml(quote.category)} · ${escapeHtml(quote.unit)}</span>
+        </div>
+        <span class="price-pill">¥ ${escapeHtml(quote.unitPrice)} / ${escapeHtml(quote.unit)}</span>
+      </div>
+      <div class="rfq-score">
+        <strong>${escapeHtml(quote.recommendScore)}</strong>
+        <span>推荐分</span>
+      </div>
+      <div class="order-meta">
+        <span class="chip green">可供 ${escapeHtml(quote.availableQuantity)} ${escapeHtml(quote.unit)}</span>
+        <span class="chip amber">${escapeHtml(quote.deliveryDays)} 天交付</span>
+        <span class="chip ${quoteStatusClass(quote.status)}">${escapeHtml(quoteStatusText(quote.status))}</span>
+      </div>
+      ${quote.remark ? `<div class="muted">${escapeHtml(quote.remark)}</div>` : ""}
+      <div class="order-actions">
+        ${
+          canAccept
+            ? actionButton("accept-rfq-quote", quote.id, "采纳并生成订单", "btn-primary", `accept-rfq-quote:${quote.id}`)
+            : '<span class="chip green">已锁定结果</span>'
+        }
+      </div>
+    </article>
+  `;
+}
+
+/**
+ * 作用：生成供应商询价报价页面。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成供应商 RFQ 页面。
+ */
+export function supplierRfqPanel() {
+  return `
+    <div class="dashboard-grid">
+      ${statCard("开放询价", state.supplierOpenRfqs.length, "可立即报价")}
+      ${statCard("我的报价", state.supplierQuotes.length, "可更新报价")}
+      ${statCard("供应货物", state.supplierMaterials.length, "报价物资来源")}
+      ${statCard("已采纳", state.supplierQuotes.filter((item) => item.status === "SELECTED").length, "进入订单流程")}
+    </div>
+    <div class="layout-2 rfq-layout">
+      <div class="panel">
+        <div class="panel-head">
+          <div><h2>开放询价</h2><div class="muted">选择自己的上架物资，填写单价、可供数量和交付天数后提交。</div></div>
+          <button class="btn btn-ghost btn-sm" id="refreshData">刷新</button>
+        </div>
+        <div class="panel-body rfq-list">
+          ${
+            state.supplierOpenRfqs.length
+              ? state.supplierOpenRfqs.map(renderSupplierOpenRfqCard).join("")
+              : '<div class="empty">暂无开放询价。采购方发布 RFQ 后会出现在这里。</div>'
+          }
+        </div>
+      </div>
+      <aside class="panel detail-drawer">
+        <div class="panel-head"><div><h2>我的 RFQ 报价</h2><div class="muted">采购方采纳后会自动生成供货订单。</div></div></div>
+        <div class="panel-body rfq-list">
+          ${
+            state.supplierQuotes.length
+              ? state.supplierQuotes.map(renderSupplierQuoteRecord).join("")
+              : '<div class="empty">还没有提交过 RFQ 报价。</div>'
+          }
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+/**
+ * 作用：生成供应商可报价询价卡片。
+ * 输入：
+ * - rfq：开放询价对象。
+ * 输出：返回 HTML 字符串。
+ */
+export function renderSupplierOpenRfqCard(rfq) {
+  const matchingMaterial = state.supplierMaterials.find((item) => item.materialName === rfq.materialName || item.category === rfq.category);
+  const loading = Boolean(state.actionLoading[`quote-rfq:${rfq.id}`]);
+  return `
+    <article class="order-card rfq-card">
+      <div class="order-top">
+        <div class="order-title">
+          <strong>${escapeHtml(rfq.materialName)}</strong>
+          <span>${escapeHtml(rfq.purchaserName)} · ${escapeHtml(rfq.deliveryAddress)}</span>
+        </div>
+        <span class="chip ${rfqStatusClass(rfq.status)}">${escapeHtml(rfqStatusText(rfq.status))}</span>
+      </div>
+      <div class="order-meta">
+        <span class="chip">${escapeHtml(rfq.category)}</span>
+        <span class="chip">${escapeHtml(rfq.quantity)}</span>
+        <span class="chip blue">${Number(rfq.quoteCount || 0)} 个报价</span>
+      </div>
+      ${rfq.remark ? `<div class="muted">${escapeHtml(rfq.remark)}</div>` : ""}
+      <form class="inline-form rfq-inline-form" data-rfq-quote-form="true">
+        <input type="hidden" name="rfqId" value="${escapeHtml(rfq.id)}" />
+        <div class="compact-field">
+          <span>供应物资</span>
+          <select name="supplierMaterialId" ${state.supplierMaterials.length ? "" : "disabled"}>
+            <option value="">选择已上架物资</option>
+            ${state.supplierMaterials.map((item) => `
+              <option value="${item.id}" ${matchingMaterial?.id === item.id ? "selected" : ""}>
+                ${escapeHtml(item.materialName)} / ${escapeHtml(item.unit)}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+        <div class="compact-field">
+          <span>单价</span>
+          <input name="unitPrice" inputmode="decimal" placeholder="例如 39.8" />
+        </div>
+        <div class="compact-field">
+          <span>可供数量</span>
+          <input name="availableQuantity" inputmode="numeric" placeholder="例如 300" />
+        </div>
+        <div class="compact-field">
+          <span>交付天数</span>
+          <input name="deliveryDays" inputmode="numeric" placeholder="例如 1" />
+        </div>
+        <div class="compact-field">
+          <span>备注</span>
+          <input name="remark" placeholder="例如 可当天出库" />
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit" ${loading ? "disabled" : ""}>
+          ${loading ? "提交中..." : "提交报价"}
+        </button>
+      </form>
+    </article>
+  `;
+}
+
+/**
+ * 作用：生成供应商已提交报价记录。
+ * 输入：
+ * - quote：供应商报价对象。
+ * 输出：返回 HTML 字符串。
+ */
+export function renderSupplierQuoteRecord(quote) {
+  return `
+    <article class="task-card">
+      <div class="order-top">
+        <div class="order-title">
+          <strong>${escapeHtml(quote.materialName)}</strong>
+          <span>RFQ-${escapeHtml(quote.rfqId)} · ${escapeHtml(quote.createdAt)}</span>
+        </div>
+        <span class="chip ${quoteStatusClass(quote.status)}">${escapeHtml(quoteStatusText(quote.status))}</span>
+      </div>
+      <div class="order-meta">
+        <span class="chip blue">¥ ${escapeHtml(quote.unitPrice)} / ${escapeHtml(quote.unit)}</span>
+        <span class="chip green">可供 ${escapeHtml(quote.availableQuantity)}</span>
+        <span class="chip amber">${escapeHtml(quote.deliveryDays)} 天</span>
+        <span class="chip">推荐分 ${escapeHtml(quote.recommendScore)}</span>
+      </div>
+      ${quote.remark ? `<div class="muted">${escapeHtml(quote.remark)}</div>` : ""}
+    </article>
+  `;
+}
+
+/**
+ * 作用：生成司机工作台内容。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderDriverContent() {
   if (state.page === "push") {
     return ordersPanel("推送订单", "来自关注采购方和采购方关注司机的推送。", state.pushOrders, true);
@@ -341,6 +869,12 @@ export function renderDriverContent() {
   `;
 }
 
+/**
+ * 作用：生成供应商卡片 HTML。
+ * 输入：
+ * - supplier：供应商对象，里面有公司名称、评分、物资列表等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderSupplierCard(supplier) {
   const minPrice = supplierMinPrice(supplier);
   const materialSummary = supplier.materials.slice(0, 3).map((item) => item.name).join(" / ");
@@ -367,6 +901,12 @@ export function renderSupplierCard(supplier) {
   `;
 }
 
+/**
+ * 作用：生成采购方可下单的物资卡片 HTML。
+ * 输入：
+ * - material：物资对象，里面有名称、单位、价格等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderPurchaserMaterial(material) {
   const inCart = state.cart.some((item) => item.materialId === material.id);
   return `
@@ -391,6 +931,12 @@ export function renderPurchaserMaterial(material) {
   `;
 }
 
+/**
+ * 作用：生成只读物资卡片 HTML。
+ * 输入：
+ * - material：物资对象，里面有名称、单位、价格等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderReadonlyMaterial(material) {
   return `
     <article class="task-card">
@@ -406,6 +952,12 @@ export function renderReadonlyMaterial(material) {
   `;
 }
 
+/**
+ * 作用：生成供应商可编辑的物资卡片 HTML。
+ * 输入：
+ * - material：物资对象，里面有名称、单位、价格等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderManagedMaterial(material) {
   return `
     <article class="task-card">
@@ -421,9 +973,34 @@ export function renderManagedMaterial(material) {
         <span class="chip">配送 ${material.deliveryRadiusKm} KM</span>
       </div>
       <div class="inline-form">
-        <input aria-label="价格" type="number" min="0" step="0.01" value="${material.supplyPrice}" data-edit-price="${material.id}" />
-        <input aria-label="库存" type="number" min="0" step="1" value="${material.stockQuantity}" data-edit-stock="${material.id}" />
-        <input aria-label="日产能" type="number" min="0" step="1" value="${material.dailyCapacity}" data-edit-capacity="${material.id}" />
+        <label class="compact-field">
+          <span>价格</span>
+          <div class="input-with-unit compact">
+            <input aria-label="价格" inputmode="decimal" value="${material.supplyPrice}" data-edit-price="${material.id}" />
+            <strong>元/${escapeHtml(material.unit)}</strong>
+          </div>
+        </label>
+        <label class="compact-field">
+          <span>库存</span>
+          <div class="input-with-unit compact">
+            <input aria-label="库存" inputmode="numeric" value="${material.stockQuantity}" data-edit-stock="${material.id}" />
+            <strong>${escapeHtml(material.unit)}</strong>
+          </div>
+        </label>
+        <label class="compact-field">
+          <span>日产能</span>
+          <div class="input-with-unit compact">
+            <input aria-label="日产能" inputmode="numeric" value="${material.dailyCapacity}" data-edit-capacity="${material.id}" />
+            <strong>${escapeHtml(material.unit)}/日</strong>
+          </div>
+        </label>
+        <label class="compact-field">
+          <span>配送半径</span>
+          <div class="input-with-unit compact">
+            <input aria-label="配送半径 KM" inputmode="decimal" value="${material.deliveryRadiusKm}" data-edit-radius="${material.id}" />
+            <strong>KM</strong>
+          </div>
+        </label>
         <button class="btn btn-ghost btn-sm" data-update-material="${material.id}">保存</button>
         <button class="btn btn-danger btn-sm" data-offline-material="${material.id}">下架</button>
       </div>
@@ -431,6 +1008,12 @@ export function renderManagedMaterial(material) {
   `;
 }
 
+/**
+ * 作用：生成供应商排行榜面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function rankingPanel() {
   return `
     <div class="panel ranking-panel">
@@ -452,6 +1035,12 @@ export function rankingPanel() {
   `;
 }
 
+/**
+ * 作用：生成附近供应商面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function nearbySuppliersPanel() {
   return `
     <div class="panel ranking-panel">
@@ -474,6 +1063,12 @@ export function nearbySuppliersPanel() {
   `;
 }
 
+/**
+ * 作用：生成司机出勤面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function driverAttendancePanel() {
   return `
     <div class="panel ranking-panel">
@@ -494,6 +1089,12 @@ export function driverAttendancePanel() {
   `;
 }
 
+/**
+ * 作用：生成 MQ 监控面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function mqPanel() {
   const total = state.deadLetters.reduce((sum, item) => sum + Number(item.messages || 0), 0);
   return `
@@ -520,6 +1121,12 @@ export function mqPanel() {
   `;
 }
 
+/**
+ * 作用：生成管理员运营面板 HTML。
+ * 输入：
+ * - dashboard：管理员大盘数据。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function adminOpsPanel(dashboard) {
   return `
     <div class="panel ranking-panel">
@@ -553,6 +1160,12 @@ export function adminOpsPanel(dashboard) {
   `;
 }
 
+/**
+ * 作用：生成管理员供应商审核面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function adminSupplierPanel() {
   return `
     <div class="panel">
@@ -571,7 +1184,14 @@ export function adminSupplierPanel() {
   `;
 }
 
+/**
+ * 作用：生成管理员供应商审核卡片 HTML。
+ * 输入：
+ * - supplier：供应商对象，里面有公司名称、评分、物资列表等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderAdminSupplierCard(supplier) {
+  const riskTags = supplier.riskTags || [];
   return `
     <article class="order-card supplier-card">
       <div class="order-top">
@@ -579,17 +1199,23 @@ export function renderAdminSupplierCard(supplier) {
           <strong>${escapeHtml(supplier.companyName)}</strong>
           <span>${escapeHtml(supplier.address)} · ${escapeHtml(supplier.licenseNo)}</span>
         </div>
-        <span class="chip ${supplier.status === 1 ? "green" : "amber"}">${escapeHtml(supplier.auditStatus)}</span>
+        <span class="chip ${qualificationStatusClass(supplier.auditStatusCode)}">${escapeHtml(supplier.auditStatus)}</span>
       </div>
       <div class="supplier-stats">
         <span><strong>${escapeHtml(supplier.ratingScore)}</strong> 履约评分</span>
         <span><strong>${escapeHtml(supplier.materialCount)}</strong> 供货品类</span>
-        <span><strong>${escapeHtml(supplier.stockQuantity)}</strong> 库存合计</span>
+        <span><strong>${escapeHtml(supplier.qualificationCompletion ?? 0)}%</strong> 资料完整度</span>
       </div>
+      <div class="progress"><span style="width:${Math.max(0, Math.min(100, Number(supplier.qualificationCompletion || 0)))}%"></span></div>
       <div class="order-meta">
         <span class="chip">联系人 ${escapeHtml(supplier.contactName)}</span>
         <span class="chip">电话 ${escapeHtml(supplier.contactPhone)}</span>
+        <span class="chip blue">库存 ${escapeHtml(supplier.stockQuantity)}</span>
       </div>
+      <div class="risk-list">
+        ${riskTags.map((risk) => `<span class="chip ${risk === "资质资料完整" ? "green" : "amber"}">${escapeHtml(risk)}</span>`).join("")}
+      </div>
+      <div class="form-note">${escapeHtml(supplier.auditRemark || "暂无审核备注")}</div>
       <div class="order-actions">
         ${actionButton("admin-approve-supplier", supplier.supplierId, "审核通过", "btn-primary", `admin-approve-supplier:${supplier.supplierId}`)}
         ${actionButton("admin-reject-supplier", supplier.supplierId, "驳回/停用", "btn-danger", `admin-reject-supplier:${supplier.supplierId}`)}
@@ -598,6 +1224,12 @@ export function renderAdminSupplierCard(supplier) {
   `;
 }
 
+/**
+ * 作用：生成通知中心面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function notificationCenterPanel() {
   return `
     <section class="notification-panel">
@@ -625,6 +1257,12 @@ export function notificationCenterPanel() {
   `;
 }
 
+/**
+ * 作用：生成供应商筛选栏 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function supplierFiltersPanel() {
   return `
     <div class="panel filter-panel">
@@ -647,7 +1285,24 @@ export function supplierFiltersPanel() {
   `;
 }
 
+/**
+ * 作用：生成供应商店铺详情面板 HTML。
+ * 输入：
+ * - supplier：供应商对象，里面有公司名称、评分、物资列表等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function supplierStorePanel(supplier) {
+  if (!supplier) {
+    return `
+      <div class="store-head">
+        <div>
+          <h2>暂无匹配供应商</h2>
+          <div class="muted">调整关键词或物资分类后再查看店铺菜单。</div>
+        </div>
+      </div>
+      <div class="panel-body"><div class="empty">当前筛选条件下没有可下单的供应商。</div></div>
+    `;
+  }
   const store = state.supplierStore?.supplier?.id === supplier.id ? state.supplierStore : null;
   return `
     <div class="store-head">
@@ -673,6 +1328,12 @@ export function supplierStorePanel(supplier) {
   `;
 }
 
+/**
+ * 作用：生成店铺概览信息面板 HTML。
+ * 输入：
+ * - store：供应商店铺详情数据。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function storeInsightPanel(store) {
   return `
     <h3 class="section-subtitle">最近履约</h3>
@@ -697,6 +1358,12 @@ export function storeInsightPanel(store) {
   `;
 }
 
+/**
+ * 作用：生成采购清单面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function cartPanel() {
   const supplier = selectedSupplier();
   const sameSupplier = state.cart.length && state.cart[0].supplierId === supplier.id;
@@ -730,6 +1397,12 @@ export function cartPanel() {
   `;
 }
 
+/**
+ * 作用：生成采购清单中的一行 HTML。
+ * 输入：
+ * - item：列表中的一项数据。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderCartItem(item) {
   return `
     <div class="cart-row">
@@ -743,6 +1416,12 @@ export function renderCartItem(item) {
   `;
 }
 
+/**
+ * 作用：生成评价弹窗 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function reviewModalTemplate() {
   if (!state.reviewModal) return "";
   const order = state.reviewModal.order;
@@ -789,6 +1468,130 @@ export function reviewModalTemplate() {
   `;
 }
 
+/**
+ * 作用：生成采购方验收签收弹窗 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
+export function acceptanceModalTemplate() {
+  if (!state.acceptanceModal) return "";
+  const order = state.acceptanceModal.order;
+  return `
+    <div class="modal-backdrop" role="presentation" data-close-acceptance="true">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="acceptanceTitle">
+        <div class="modal-head">
+          <div>
+            <h2 id="acceptanceTitle">验收签收</h2>
+            <div class="muted">${escapeHtml(order.id)} · ${escapeHtml(order.materialName)} · ${escapeHtml(order.quantity)}</div>
+          </div>
+          <button class="icon-btn" type="button" aria-label="关闭验收弹窗" data-close-acceptance="true">×</button>
+        </div>
+        <form class="modal-body form-grid" id="acceptanceForm">
+          <div class="form-split">
+            <div class="field">
+              <label for="acceptanceSigner">签收人</label>
+              <input id="acceptanceSigner" name="signerName" value="${escapeHtml(state.user.displayName)}" />
+            </div>
+            <div class="field">
+              <label for="acceptanceResult">验收结果</label>
+              <select id="acceptanceResult" name="acceptanceResult">
+                <option value="ACCEPTED">验收通过</option>
+                <option value="EXCEPTION">异常验收</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="acceptanceProofUrl">凭证链接</label>
+            <input id="acceptanceProofUrl" name="proofUrl" placeholder="https://files.example.com/pod.pdf" />
+          </div>
+          <div class="field">
+            <label for="acceptanceRemark">验收备注</label>
+            <textarea id="acceptanceRemark" name="remark" rows="4">数量、外观和交付地点验收通过。</textarea>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" data-close-acceptance="true">取消</button>
+            <button class="btn btn-primary" type="submit" ${state.actionLoading[`accept-order:${order.id}`] ? "disabled" : ""}>
+              ${state.actionLoading[`accept-order:${order.id}`] ? "提交中..." : "提交验收"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+/**
+ * 作用：生成采购方付款登记弹窗 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成付款登记弹窗。
+ */
+export function paymentModalTemplate() {
+  if (!state.paymentModal) return "";
+  const order = state.paymentModal.order;
+  return `
+    <div class="modal-backdrop" role="presentation" data-close-payment="true">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="paymentTitle">
+        <div class="modal-head">
+          <div>
+            <h2 id="paymentTitle">付款登记</h2>
+            <div class="muted">${escapeHtml(order.id)} · ${escapeHtml(order.materialName)} · ${escapeHtml(order.amount)}</div>
+          </div>
+          <button class="icon-btn" type="button" aria-label="关闭付款弹窗" data-close-payment="true">×</button>
+        </div>
+        <form class="modal-body form-grid" id="paymentForm">
+          <div class="form-split">
+            <div class="field">
+              <label for="paymentAmount">付款金额</label>
+              <input id="paymentAmount" name="amount" inputmode="decimal" value="${escapeHtml(normalizeAmount(order.amount))}" />
+            </div>
+            <div class="field">
+              <label for="paymentMethod">付款方式</label>
+              <select id="paymentMethod" name="paymentMethod">
+                <option value="BANK_TRANSFER">对公转账</option>
+                <option value="CORPORATE_CARD">企业卡</option>
+                <option value="OFFLINE">线下付款</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="paymentReference">付款流水号</label>
+            <input id="paymentReference" name="paymentReference" placeholder="BANK-20260608-001" />
+          </div>
+          <div class="field">
+            <label for="paymentProofUrl">付款凭证链接</label>
+            <input id="paymentProofUrl" name="proofUrl" placeholder="https://files.example.com/payment.pdf" />
+          </div>
+          <div class="field">
+            <label for="paymentRemark">付款备注</label>
+            <textarea id="paymentRemark" name="remark" rows="4">验收通过后对公付款，凭证已上传。</textarea>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" data-close-payment="true">取消</button>
+            <button class="btn btn-primary" type="submit" ${state.actionLoading[`pay-order:${order.id}`] ? "disabled" : ""}>
+              ${state.actionLoading[`pay-order:${order.id}`] ? "提交中..." : "提交付款"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function normalizeAmount(amount) {
+  const normalized = String(amount || "")
+    .replace(/[^\d.]/g, "")
+    .replace(/^0+(\d)/, "$1");
+  return normalized || "";
+}
+
+/**
+ * 作用：生成订单时间线弹窗 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function timelineModalTemplate() {
   if (!state.timelineModal) return "";
   const { order, items } = state.timelineModal;
@@ -824,6 +1627,12 @@ export function timelineModalTemplate() {
   `;
 }
 
+/**
+ * 作用：生成评价对象下拉选项 HTML。
+ * 输入：
+ * - order：订单对象，里面有订单编号、状态、采购方、供应商等信息。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function reviewTargetOptions(order) {
   if (state.user.userType === "PURCHASER") {
     return [
@@ -840,6 +1649,12 @@ export function reviewTargetOptions(order) {
   return [{ targetType: "PURCHASER", targetId: order.purchaserId, label: `采购方：${order.purchaserName}` }];
 }
 
+/**
+ * 作用：根据评价对象生成默认评价文本。
+ * 输入：
+ * - targetType：评价对象类型，比如供应商、采购方或司机。
+ * 输出：返回文本，作为评价输入框的默认内容。
+ */
 export function defaultReviewText(targetType) {
   return {
     SUPPLIER: "应急物资响应及时，备货稳定，履约协同顺畅。",
@@ -848,6 +1663,15 @@ export function defaultReviewText(targetType) {
   }[targetType] || "履约及时，协同顺畅。";
 }
 
+/**
+ * 作用：生成订单列表面板 HTML。
+ * 输入：
+ * - title：面板标题。
+ * - desc：面板说明文字。
+ * - orders：订单列表。
+ * - claimable：是否显示抢单按钮，true 表示可以抢单。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function ordersPanel(title, desc, orders, claimable = false) {
   return `
     <div class="panel">
@@ -866,6 +1690,13 @@ export function ordersPanel(title, desc, orders, claimable = false) {
   `;
 }
 
+/**
+ * 作用：生成订单卡片 HTML。
+ * 输入：
+ * - order：订单对象，里面有订单编号、状态、采购方、供应商等信息。
+ * - claimable：是否显示抢单按钮，true 表示可以抢单。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function renderOrderCard(order, claimable) {
   const actions = orderActions(order, claimable);
   return `
@@ -882,9 +1713,13 @@ export function renderOrderCard(order, claimable) {
         <span class="chip">${escapeHtml(order.quantity)}</span>
         <span class="chip blue">${escapeHtml(order.amount)}</span>
         ${order.pushStatus ? `<span class="chip ${order.pushStatus === "PENDING" ? "amber" : "green"}">推送 ${escapeHtml(pushStatusLabel(order.pushStatus))}</span>` : ""}
+        ${order.status === "已完成" ? `<span class="chip ${order.acceptanceStatus === "待验收" ? "amber" : "green"}">${escapeHtml(order.acceptanceStatus || "待验收")}</span>` : ""}
+        ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<span class="chip ${paymentStatusClass(order.paymentStatus)}">${escapeHtml(order.paymentStatus || "待付款")}</span>` : ""}
       </div>
       ${orderStatusProgress(order.status)}
       <div class="muted">${escapeHtml(order.source)} · ${escapeHtml(order.pushedTo)}</div>
+      ${order.status === "已完成" ? `<div class="form-note">${escapeHtml(order.acceptanceSummary || "运输完成后由采购方验收签收")}</div>` : ""}
+      ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<div class="form-note">${escapeHtml(order.paymentSummary || "验收完成后由采购方登记付款凭证")}</div>` : ""}
       <div class="order-actions">
         ${actions.join("")}
       </div>
@@ -892,6 +1727,13 @@ export function renderOrderCard(order, claimable) {
   `;
 }
 
+/**
+ * 作用：生成订单可操作按钮 HTML。
+ * 输入：
+ * - order：订单对象，里面有订单编号、状态、采购方、供应商等信息。
+ * - claimable：是否显示抢单按钮，true 表示可以抢单。
+ * 输出：返回 HTML 字符串，里面是当前订单可以点击的操作按钮。
+ */
 export function orderActions(order, claimable) {
   const actions = [];
   if (order.pushStatus === "PENDING") {
@@ -910,6 +1752,12 @@ export function orderActions(order, claimable) {
   if (state.user.userType === "DRIVER" && order.status === "运输中") {
     actions.push(actionButton("complete-transport", order.id, "完成运输", "btn-primary", `complete-transport:${order.id}`));
   }
+  if (state.user.userType === "PURCHASER" && order.status === "已完成" && (!order.acceptanceStatus || order.acceptanceStatus === "待验收")) {
+    actions.push(`<button class="btn btn-primary btn-sm" data-accept-order="${order.id}">验收签收</button>`);
+  }
+  if (state.user.userType === "PURCHASER" && order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" && (!order.paymentStatus || order.paymentStatus === "待付款")) {
+    actions.push(`<button class="btn btn-primary btn-sm" data-pay-order="${order.id}">付款登记</button>`);
+  }
   if (order.status === "已完成" && state.user.userType !== "ADMIN") {
     actions.push(`<button class="btn btn-ghost btn-sm" data-review-order="${order.id}">评价履约</button>`);
   }
@@ -917,6 +1765,18 @@ export function orderActions(order, claimable) {
   return actions;
 }
 
+function paymentStatusClass(status) {
+  if (status === "支付超时") return "red";
+  if (status === "已付款") return "green";
+  return "amber";
+}
+
+/**
+ * 作用：把推送状态转换成页面显示文字。
+ * 输入：
+ * - status：状态文本。
+ * 输出：返回文本，表示给用户看的推送状态。
+ */
 export function pushStatusLabel(status) {
   return {
     PENDING: "未读",
@@ -925,12 +1785,84 @@ export function pushStatusLabel(status) {
   }[status] || status;
 }
 
+/**
+ * 作用：把订单状态转换成页面颜色样式。
+ * 输入：
+ * - status：状态文本。
+ * 输出：返回样式名称文本，用来决定订单状态颜色。
+ */
 export function orderStatusClass(status) {
   if (status === "已拒单") return "red";
   if (status === "已完成" || status === "司机已接单" || status === "运输中") return "green";
   return "amber";
 }
 
+/**
+ * 作用：把 RFQ 状态转换成页面显示文字。
+ * 输入：
+ * - status：后端状态。
+ * 输出：返回中文状态文本。
+ */
+export function rfqStatusText(status) {
+  return {
+    OPEN: "报价中",
+    AWARDED: "已采纳",
+  }[status] || status;
+}
+
+/**
+ * 作用：把 RFQ 状态转换成颜色样式。
+ * 输入：
+ * - status：后端状态。
+ * 输出：返回样式名称文本。
+ */
+export function rfqStatusClass(status) {
+  if (status === "AWARDED") return "green";
+  return "amber";
+}
+
+/**
+ * 作用：把 RFQ 报价状态转换成页面显示文字。
+ * 输入：
+ * - status：后端状态。
+ * 输出：返回中文状态文本。
+ */
+export function quoteStatusText(status) {
+  return {
+    ACTIVE: "有效报价",
+    SELECTED: "已采纳",
+  }[status] || status;
+}
+
+/**
+ * 作用：把 RFQ 报价状态转换成颜色样式。
+ * 输入：
+ * - status：后端状态。
+ * 输出：返回样式名称文本。
+ */
+export function quoteStatusClass(status) {
+  if (status === "SELECTED") return "green";
+  return "blue";
+}
+
+/**
+ * 作用：把供应商资质审核状态转换成颜色样式。
+ * 输入：
+ * - status：审核状态。
+ * 输出：返回样式名称文本。
+ */
+export function qualificationStatusClass(status) {
+  if (status === "APPROVED") return "green";
+  if (status === "REJECTED") return "red";
+  return "amber";
+}
+
+/**
+ * 作用：把订单状态转换成进度条百分比。
+ * 输入：
+ * - status：状态文本。
+ * 输出：返回数字，表示订单进度百分比。
+ */
 export function orderStatusProgress(status) {
   const currentIndex = orderStatusFlow.indexOf(status);
   if (currentIndex < 0) {
@@ -946,6 +1878,16 @@ export function orderStatusProgress(status) {
   `;
 }
 
+/**
+ * 作用：生成一个操作按钮 HTML。
+ * 输入：
+ * - dataName：按钮上的 data 属性名。
+ * - dataValue：按钮上的 data 属性值。
+ * - label：按钮或字段显示文字。
+ * - variant：按钮样式名称。
+ * - actionKey：操作标识，用来判断这个操作是否正在执行。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function actionButton(dataName, dataValue, label, variant = "btn-primary", actionKey = "") {
   const key = actionKey || `${dataName}:${dataValue}`;
   const loading = Boolean(state.actionLoading[key]);
@@ -956,6 +1898,12 @@ export function actionButton(dataName, dataValue, label, variant = "btn-primary"
   `;
 }
 
+/**
+ * 作用：生成司机关注采购方的表格行 HTML。
+ * 输入：
+ * - withAction：是否显示操作按钮，true 表示显示。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function followRows(withAction = false) {
   return state.follows
     .map(
@@ -977,6 +1925,14 @@ export function followRows(withAction = false) {
     .join("");
 }
 
+/**
+ * 作用：生成统计卡片 HTML。
+ * 输入：
+ * - label：按钮或字段显示文字。
+ * - value：页面输入的文本或数字。
+ * - trend：统计卡片上的趋势说明。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function statCard(label, value, trend) {
   return `
     <div class="stat-card">
@@ -987,6 +1943,13 @@ export function statCard(label, value, trend) {
   `;
 }
 
+/**
+ * 作用：生成用户资料面板 HTML。
+ * 输入：
+ * - title：面板标题。
+ * - desc：面板说明文字。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function profilePanel(title, desc) {
   return `
     <div class="profile-layout">
@@ -1003,7 +1966,7 @@ export function profilePanel(title, desc) {
           <div><span>用户 ID</span><strong>${state.user.id}</strong></div>
           <div><span>权限模式</span><strong>自动通过</strong></div>
         </div>
-        <button class="btn btn-danger" id="logoutBtn">退出登录</button>
+        <button class="btn btn-danger" type="button" data-logout>退出登录</button>
       </div>
       <div class="panel">
         <div class="panel-head"><div><h2>${title}</h2><div class="muted">${desc}</div></div></div>
@@ -1020,10 +1983,23 @@ export function profilePanel(title, desc) {
   `;
 }
 
+/**
+ * 作用：生成详情项 HTML。
+ * 输入：
+ * - label：按钮或字段显示文字。
+ * - value：页面输入的文本或数字。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
 export function detailItem(label, value) {
   return `<div class="detail-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
+/**
+ * 作用：根据用户类型生成默认登录用户名。
+ * 输入：
+ * - userType：用户类型，比如采购方、供应商、司机或管理员。
+ * 输出：返回文本，作为登录表单里的默认用户名。
+ */
 export function defaultAuthUsername(userType) {
   return {
     SUPPLIER: "supplier01",

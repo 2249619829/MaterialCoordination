@@ -26,3 +26,7 @@ dist/
 .env
 .env.local
 application-local.yml
+
+# Generated performance artifacts
+performance/data/*.csv
+performance/results/

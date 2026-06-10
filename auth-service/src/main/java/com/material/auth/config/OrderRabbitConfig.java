@@ -21,16 +21,34 @@ public class OrderRabbitConfig {
     public static final String ORDER_CREATED_DEAD_LETTER_ROUTING_KEY = "order.created.dead";
     public static final String ORDER_CLAIMED_DEAD_LETTER_ROUTING_KEY = "order.claimed.dead";
 
+    /**
+     * 作用：声明订单业务交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 DirectExchange，也就是这个方法处理后的结果。
+     */
     @Bean
     public DirectExchange orderExchange() {
         return new DirectExchange(ORDER_EXCHANGE, true, false);
     }
 
+    /**
+     * 作用：声明订单死信交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 DirectExchange，也就是这个方法处理后的结果。
+     */
     @Bean
     public DirectExchange orderDeadLetterExchange() {
         return new DirectExchange(ORDER_DEAD_LETTER_EXCHANGE, true, false);
     }
 
+    /**
+     * 作用：声明订单创建队列。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Queue，也就是这个方法处理后的结果。
+     */
     @Bean
     public Queue orderCreatedQueue() {
         return QueueBuilder.durable(ORDER_CREATED_QUEUE)
@@ -39,6 +57,12 @@ public class OrderRabbitConfig {
                 .build();
     }
 
+    /**
+     * 作用：声明订单抢购队列。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Queue，也就是这个方法处理后的结果。
+     */
     @Bean
     public Queue orderClaimedQueue() {
         return QueueBuilder.durable(ORDER_CLAIMED_QUEUE)
@@ -47,16 +71,34 @@ public class OrderRabbitConfig {
                 .build();
     }
 
+    /**
+     * 作用：声明订单创建死信队列。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Queue，也就是这个方法处理后的结果。
+     */
     @Bean
     public Queue orderCreatedDeadLetterQueue() {
         return QueueBuilder.durable(ORDER_CREATED_DEAD_LETTER_QUEUE).build();
     }
 
+    /**
+     * 作用：声明订单抢购死信队列。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Queue，也就是这个方法处理后的结果。
+     */
     @Bean
     public Queue orderClaimedDeadLetterQueue() {
         return QueueBuilder.durable(ORDER_CLAIMED_DEAD_LETTER_QUEUE).build();
     }
 
+    /**
+     * 作用：把订单创建队列绑定到订单业务交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Binding，也就是这个方法处理后的结果。
+     */
     @Bean
     public Binding orderCreatedBinding() {
         return BindingBuilder.bind(orderCreatedQueue())
@@ -64,6 +106,12 @@ public class OrderRabbitConfig {
                 .with(ORDER_CREATED_ROUTING_KEY);
     }
 
+    /**
+     * 作用：把订单抢购队列绑定到订单业务交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Binding，也就是这个方法处理后的结果。
+     */
     @Bean
     public Binding orderClaimedBinding() {
         return BindingBuilder.bind(orderClaimedQueue())
@@ -71,6 +119,12 @@ public class OrderRabbitConfig {
                 .with(ORDER_CLAIMED_ROUTING_KEY);
     }
 
+    /**
+     * 作用：把订单创建死信队列绑定到死信交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Binding，也就是这个方法处理后的结果。
+     */
     @Bean
     public Binding orderCreatedDeadLetterBinding() {
         return BindingBuilder.bind(orderCreatedDeadLetterQueue())
@@ -78,6 +132,12 @@ public class OrderRabbitConfig {
                 .with(ORDER_CREATED_DEAD_LETTER_ROUTING_KEY);
     }
 
+    /**
+     * 作用：把订单抢购死信队列绑定到死信交换机。
+     * 输入：
+     * - 无输入参数。
+     * 输出：返回 Binding，也就是这个方法处理后的结果。
+     */
     @Bean
     public Binding orderClaimedDeadLetterBinding() {
         return BindingBuilder.bind(orderClaimedDeadLetterQueue())

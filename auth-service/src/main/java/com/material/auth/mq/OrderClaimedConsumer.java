@@ -21,6 +21,14 @@ public class OrderClaimedConsumer {
     private final PurchaserProfileMapper purchaserProfileMapper;
     private final RedissonClient redissonClient;
 
+    /**
+     * 作用：创建 OrderClaimedConsumer 对象，并把外部传进来的依赖保存起来。
+     * 输入：
+     * - purchaseOrderMapper：采购订单数据库操作对象，类型是 PurchaseOrderMapper；方法会读取这个值继续处理。
+     * - purchaserProfileMapper：采购方资料数据库操作对象，类型是 PurchaserProfileMapper；方法会读取这个值继续处理。
+     * - redissonClient：Redisson 客户端，类型是 RedissonClient；方法会读取这个值继续处理。
+     * 输出：无返回值。构造器的结果是创建好的对象本身。
+     */
     public OrderClaimedConsumer(PurchaseOrderMapper purchaseOrderMapper,
                                 PurchaserProfileMapper purchaserProfileMapper,
                                 RedissonClient redissonClient) {
@@ -29,6 +37,12 @@ public class OrderClaimedConsumer {
         this.redissonClient = redissonClient;
     }
 
+    /**
+     * 作用：消费抢购成功消息，把抢购结果写入 MySQL。
+     * 输入：
+     * - message：消息内容，通常来自 RabbitMQ 或错误提示。
+     * 输出：无返回值。方法执行成功就表示操作完成。
+     */
     @RabbitListener(queues = OrderRabbitConfig.ORDER_CLAIMED_QUEUE)
     public void handleOrderClaimed(String message) throws InterruptedException {
         String[] parts = message.split(":");
