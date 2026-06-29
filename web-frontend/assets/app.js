@@ -7,7 +7,7 @@ import {
   defaultAuthUsername,
   defaultReviewText,
   loginTemplate,
-} from "./js/views.js?v=20260609-backend-geocode";
+} from "./js/views.js?v=20260611-dispatch-recommendations";
 
 /**
  * 作用：把当前采购清单保存到浏览器本地存储。
@@ -122,13 +122,15 @@ async function loadRoleData() {
   state.loading = true;
   render();
   try {
-    const [suppliers, ranking, notifications] = await Promise.all([
+    const [suppliers, ranking, fulfillmentRankings, notifications] = await Promise.all([
       requestJson("/api/suppliers/catalog"),
       requestJson("/api/suppliers/ranking"),
+      requestJson("/api/rankings/fulfillment"),
       requestJson("/api/notifications"),
     ]);
     state.suppliers = suppliers;
     state.supplierRanking = ranking;
+    state.fulfillmentRankings = fulfillmentRankings;
     state.notifications = notifications;
     ensureSelectedSupplierId();
     if (state.user.userType === "PURCHASER") {
@@ -146,6 +148,7 @@ async function loadRoleData() {
       state.selectedRfqQuotes = state.selectedRfqId
         ? await requestJson(`/api/purchase-rfqs/${state.selectedRfqId}/quotes`)
         : [];
+      await loadDispatchRecommendations(orders);
       await loadSupplierStore();
     }
     if (state.user.userType === "SUPPLIER") {
@@ -163,6 +166,7 @@ async function loadRoleData() {
       state.supplierOpenRfqs = openRfqs;
       state.supplierQuotes = quotes;
       state.supplierQualification = qualification;
+      await loadDispatchRecommendations(orders);
     }
     if (state.user.userType === "DRIVER") {
       const [hall, mine, push, follows, attendance] = await Promise.all([
@@ -177,6 +181,7 @@ async function loadRoleData() {
       state.pushOrders = push;
       state.follows = follows;
       state.attendance = attendance;
+      state.dispatchRecommendations = { orderId: null, items: [] };
     }
     if (state.user.userType === "ADMIN") {
       const [dashboard, suppliers, orders, deadLetters] = await Promise.all([
@@ -189,6 +194,7 @@ async function loadRoleData() {
       state.adminSuppliers = suppliers;
       state.adminOrders = orders;
       state.deadLetters = deadLetters;
+      await loadDispatchRecommendations(orders);
     }
   } catch (error) {
     showToast(error.message || "业务数据加载失败");
@@ -211,6 +217,26 @@ async function loadSupplierStore() {
     return;
   }
   state.supplierStore = await requestJson(`/api/suppliers/${supplier.id}/store`);
+}
+
+/**
+ * 作用：基于待司机接单订单加载智能调度推荐。
+ * 输入：
+ * - orders：当前角色可见订单列表。
+ * 输出：返回 Promise；推荐结果会写入 state.dispatchRecommendations。
+ */
+async function loadDispatchRecommendations(orders = []) {
+  const targetOrder = orders.find((order) => order.status === "待司机接单");
+  if (!targetOrder) {
+    state.dispatchRecommendations = { orderId: null, items: [] };
+    return;
+  }
+  try {
+    const items = await requestJson(`/api/orders/${targetOrder.id}/dispatch-recommendations`);
+    state.dispatchRecommendations = { orderId: targetOrder.id, items };
+  } catch (error) {
+    state.dispatchRecommendations = { orderId: targetOrder.id, items: [] };
+  }
 }
 
 /**
@@ -815,7 +841,7 @@ async function createSupplierMaterial(event) {
  * - event：浏览器事件对象，通常来自企业资质表单提交。
  * 输出：返回 Promise；成功后资质状态进入待复核。
  */
-async function updateSupplierQualification(event) {
+export async function updateSupplierQualification(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const companyName = String(form.get("companyName") || "").trim();
@@ -825,6 +851,13 @@ async function updateSupplierQualification(event) {
   const address = String(form.get("address") || "").trim();
   const longitude = parseOptionalCoordinate(form.get("longitude"));
   const latitude = parseOptionalCoordinate(form.get("latitude"));
+  const previousQualification = state.supplierQualification || {};
+  const addressChanged = address !== String(previousQualification.address || "").trim();
+  const staleCoordinates = addressChanged
+    && sameCoordinate(longitude, previousQualification.longitude)
+    && sameCoordinate(latitude, previousQualification.latitude);
+  const submittedLongitude = staleCoordinates ? undefined : longitude;
+  const submittedLatitude = staleCoordinates ? undefined : latitude;
   const businessLicenseUrl = String(form.get("businessLicenseUrl") || "").trim();
   const safetyCertUrl = String(form.get("safetyCertUrl") || "").trim();
   const insuranceCertUrl = String(form.get("insuranceCertUrl") || "").trim();
@@ -848,8 +881,8 @@ async function updateSupplierQualification(event) {
           contactPhone,
           licenseNo,
           address,
-          longitude,
-          latitude,
+          longitude: submittedLongitude,
+          latitude: submittedLatitude,
           businessLicenseUrl,
           safetyCertUrl,
           insuranceCertUrl,
@@ -948,6 +981,17 @@ function parseOptionalCoordinate(value) {
   const normalized = String(value ?? "").trim();
   if (!normalized) return undefined;
   return parseCoordinate(normalized);
+}
+
+function sameCoordinate(left, right) {
+  if (left === undefined || left === null || right === undefined || right === null) {
+    return false;
+  }
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  return Number.isFinite(leftNumber)
+    && Number.isFinite(rightNumber)
+    && Math.abs(leftNumber - rightNumber) < 0.000001;
 }
 
 /**

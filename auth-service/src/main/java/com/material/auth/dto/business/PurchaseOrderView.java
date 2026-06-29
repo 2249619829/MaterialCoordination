@@ -1,5 +1,7 @@
 package com.material.auth.dto.business;
 
+import java.math.BigDecimal;
+
 public record PurchaseOrderView(
         String id,
         Long purchaserId,
@@ -23,6 +25,12 @@ public record PurchaseOrderView(
         String paymentStatus,
         String paymentSummary,
         String paymentExpiresAt,
-        String paymentProofUrl
+        String paymentProofUrl,
+        String originAddress,
+        BigDecimal originLongitude,
+        BigDecimal originLatitude,
+        String destinationAddress,
+        BigDecimal destinationLongitude,
+        BigDecimal destinationLatitude
 ) {
 }

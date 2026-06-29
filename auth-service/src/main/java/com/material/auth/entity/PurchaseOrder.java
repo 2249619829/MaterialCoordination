@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @TableName("purchase_order")
@@ -30,6 +31,18 @@ public class PurchaseOrder {
     private String source;
     @TableField("pushed_to")
     private String pushedTo;
+    @TableField("origin_address")
+    private String originAddress;
+    @TableField("origin_longitude")
+    private BigDecimal originLongitude;
+    @TableField("origin_latitude")
+    private BigDecimal originLatitude;
+    @TableField("destination_address")
+    private String destinationAddress;
+    @TableField("destination_longitude")
+    private BigDecimal destinationLongitude;
+    @TableField("destination_latitude")
+    private BigDecimal destinationLatitude;
     @TableField("driver_id")
     private Long driverId;
     @TableField("create_time")
@@ -295,6 +308,54 @@ public class PurchaseOrder {
      */
     public void setPushedTo(String pushedTo) {
         this.pushedTo = pushedTo;
+    }
+
+    public String getOriginAddress() {
+        return originAddress;
+    }
+
+    public void setOriginAddress(String originAddress) {
+        this.originAddress = originAddress;
+    }
+
+    public BigDecimal getOriginLongitude() {
+        return originLongitude;
+    }
+
+    public void setOriginLongitude(BigDecimal originLongitude) {
+        this.originLongitude = originLongitude;
+    }
+
+    public BigDecimal getOriginLatitude() {
+        return originLatitude;
+    }
+
+    public void setOriginLatitude(BigDecimal originLatitude) {
+        this.originLatitude = originLatitude;
+    }
+
+    public String getDestinationAddress() {
+        return destinationAddress;
+    }
+
+    public void setDestinationAddress(String destinationAddress) {
+        this.destinationAddress = destinationAddress;
+    }
+
+    public BigDecimal getDestinationLongitude() {
+        return destinationLongitude;
+    }
+
+    public void setDestinationLongitude(BigDecimal destinationLongitude) {
+        this.destinationLongitude = destinationLongitude;
+    }
+
+    public BigDecimal getDestinationLatitude() {
+        return destinationLatitude;
+    }
+
+    public void setDestinationLatitude(BigDecimal destinationLatitude) {
+        this.destinationLatitude = destinationLatitude;
     }
 
     /**

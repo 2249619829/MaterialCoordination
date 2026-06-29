@@ -29,6 +29,10 @@ globalThis.sessionStorage = {
 globalThis.window = {
   MATERIAL_API_BASE: "http://localhost:8080",
   MATERIAL_SKIP_AUTO_BOOTSTRAP: true,
+  location: {
+    protocol: "http:",
+    port: "5173",
+  },
   clearTimeout() {},
   setTimeout() {
     return 1;
@@ -155,6 +159,140 @@ test("supplier home renders a persistent logout action in the topbar", () => {
   assert.match(topbarHtml, /退出登录/);
 });
 
+test("supplier home exposes panic-buy orders for confirmation and shows ranking", () => {
+  state.user = { id: 1, userType: "SUPPLIER", username: "supplier01", displayName: "Shanghai Reliable Supplier Co., Ltd." };
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.suppliers = [{
+    id: 1,
+    companyName: "Shanghai Reliable Supplier Co., Ltd.",
+    contactName: "张经理",
+    region: "华东",
+    address: "上海市浦东新区临港物资园",
+    rating: "4.8",
+    certifications: ["应急物资保障单位"],
+    materials: [{ id: 101, name: "P.O42.5 散装水泥", category: "水泥", stock: 1000, price: "500", unit: "吨" }],
+  }];
+  state.supplierOrders = [{
+    id: "PO-PERF-PANIC-0001",
+    purchaserId: 20,
+    purchaserName: "压测采购方 perf_purchaser_0005",
+    supplierId: 1,
+    supplierName: "Shanghai Reliable Supplier Co., Ltd.",
+    materialId: 101,
+    materialName: "P.O42.5 散装水泥",
+    category: "水泥",
+    quantity: "1000 吨",
+    amount: "¥ 500000",
+    status: "采购方已抢购",
+    source: "JMeter 高并发抢购压测",
+    pushedTo: "采购方 20 已抢购成功，等待供应商确认",
+  }];
+  state.supplierRanking = [{
+    supplierId: 1,
+    companyName: "Shanghai Reliable Supplier Co., Ltd.",
+    ratingScore: "4.8",
+    rank: 1,
+  }];
+  state.deadLetters = [];
+
+  const html = appTemplate();
+
+  assert.match(html, /待确认供货/);
+  assert.match(html, /data-confirm-supplier-order="PO-PERF-PANIC-0001"/);
+  assert.match(html, /data-reject-supplier-order="PO-PERF-PANIC-0001"/);
+  assert.match(html, /供应商履约排行榜/);
+  assert.match(html, /#1/);
+});
+
+test("purchaser supplier and driver homes render the three rankings together", () => {
+  state.fulfillmentRankings = {
+    purchasers: [{ participantId: 1, displayName: "Shanghai Material Purchaser Co., Ltd.", ratingScore: "5", rank: 1 }],
+    suppliers: [{ participantId: 1, displayName: "Shanghai Reliable Supplier Co., Ltd.", ratingScore: "4.8", rank: 1 }],
+    drivers: [{ participantId: 1, displayName: "李师傅 · 沪A-8899", ratingScore: "4.7", rank: 1 }],
+  };
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.suppliers = [];
+  state.supplierOrders = [];
+  state.supplierMaterials = [];
+  state.supplierOpenRfqs = [];
+  state.supplierQuotes = [];
+  state.transportHall = [];
+  state.driverOrders = [];
+  state.follows = [];
+  state.attendance = { online: true, date: "2026-06-11" };
+  state.cart = [];
+
+  [
+    { id: 1, userType: "PURCHASER", username: "purchaser01", displayName: "采购方" },
+    { id: 1, userType: "SUPPLIER", username: "supplier01", displayName: "供应商" },
+    { id: 1, userType: "DRIVER", username: "driver01", displayName: "李师傅" },
+  ].forEach((user) => {
+    state.user = user;
+    const html = appTemplate();
+
+    assert.match(html, /采购方履约排行榜/);
+    assert.match(html, /供应商履约排行榜/);
+    assert.match(html, /司机履约排行榜/);
+    assert.match(html, /Shanghai Material Purchaser Co., Ltd./);
+    assert.match(html, /Shanghai Reliable Supplier Co., Ltd./);
+    assert.match(html, /李师傅 · 沪A-8899/);
+  });
+});
+
+test("purchaser supplier and admin homes render dispatch recommendations", () => {
+  state.fulfillmentRankings = { purchasers: [], suppliers: [], drivers: [] };
+  state.dispatchRecommendations = {
+    orderId: "PO-TRANSPORT-001",
+    items: [{
+      driverId: 8,
+      driverName: "李师傅",
+      vehicleNo: "沪A-8899",
+      vehicleType: "4.2米厢式货车",
+      online: true,
+      distanceToOriginKm: "0.21",
+      ratingScore: "4.7",
+      recommendScore: "166.79",
+      reason: "在线 · 距发货地 0.21 KM · 评分 4.7",
+      rank: 1,
+    }],
+  };
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.suppliers = [];
+  state.purchaserOrders = [];
+  state.supplierOrders = [];
+  state.adminOrders = [];
+  state.supplierMaterials = [];
+  state.supplierOpenRfqs = [];
+  state.supplierQuotes = [];
+  state.transportHall = [];
+  state.driverOrders = [];
+  state.follows = [];
+  state.cart = [];
+  state.deadLetters = [];
+  state.adminDashboard = {};
+
+  [
+    { id: 1, userType: "PURCHASER", username: "purchaser01", displayName: "采购方" },
+    { id: 1, userType: "SUPPLIER", username: "supplier01", displayName: "供应商" },
+    { id: 99, userType: "ADMIN", username: "admin01", displayName: "管理员" },
+  ].forEach((user) => {
+    state.user = user;
+    const html = appTemplate();
+
+    assert.match(html, /智能调度推荐/);
+    assert.match(html, /PO-TRANSPORT-001/);
+    assert.match(html, /李师傅/);
+    assert.match(html, /0\.21 KM/);
+    assert.match(html, /在线 · 距发货地 0\.21 KM · 评分 4\.7/);
+  });
+});
+
 test("supplier qualification and admin audit render compliance controls", () => {
   state.user = { id: 7, userType: "SUPPLIER", username: "supplier01", displayName: "供应商" };
   state.page = "profile";
@@ -204,6 +342,62 @@ test("supplier qualification and admin audit render compliance controls", () => 
   assert.match(adminHtml, /86%/);
   assert.match(adminHtml, /供应商资料已更新，待管理员复核/);
   assert.match(adminHtml, /data-admin-approve-supplier="7"/);
+});
+
+test("supplier qualification omits stale coordinates when address changes", async () => {
+  assert.equal(typeof appModule.updateSupplierQualification, "function");
+  state.user = { id: 1, userType: "SUPPLIER", username: "supplier01", displayName: "供应商" };
+  state.token = "supplier-token";
+  state.page = "profile";
+  state.actionLoading = {};
+  state.toast = "";
+  state.supplierQualification = {
+    companyName: "上海可靠应急供应链有限公司",
+    contactName: "张经理",
+    contactPhone: "13800000001",
+    licenseNo: "LIC-001",
+    address: "江苏省南京市",
+    longitude: "118.84",
+    latitude: "31.95",
+  };
+
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/api/supplier/qualification") && options.method === "PUT") {
+      return jsonResponse({ ...state.supplierQualification, address: "山东省济南市", longitude: "117.12", latitude: "36.65" });
+    }
+    return jsonResponse([]);
+  };
+
+  await appModule.updateSupplierQualification({
+    preventDefault() {},
+    currentTarget: {
+      companyName: "上海可靠应急供应链有限公司",
+      contactName: "张经理",
+      contactPhone: "13800000001",
+      licenseNo: "LIC-001",
+      address: "山东省济南市",
+      longitude: "118.84",
+      latitude: "31.95",
+      businessLicenseUrl: "",
+      safetyCertUrl: "",
+      insuranceCertUrl: "",
+    },
+  });
+
+  const putCall = calls.find((call) => call.url.endsWith("/api/supplier/qualification") && call.options.method === "PUT");
+  assert.ok(putCall);
+  assert.deepEqual(JSON.parse(putCall.options.body), {
+    companyName: "上海可靠应急供应链有限公司",
+    contactName: "张经理",
+    contactPhone: "13800000001",
+    licenseNo: "LIC-001",
+    address: "山东省济南市",
+    businessLicenseUrl: "",
+    safetyCertUrl: "",
+    insuranceCertUrl: "",
+  });
 });
 
 test("completed purchaser order renders acceptance action and modal", () => {

@@ -38,6 +38,8 @@ export const state = {
   supplierMaterials: [],
   supplierQualification: null,
   supplierRanking: [],
+  fulfillmentRankings: { purchasers: [], suppliers: [], drivers: [] },
+  dispatchRecommendations: { orderId: null, items: [] },
   nearbySuppliers: [],
   supplierStore: null,
   notifications: [],

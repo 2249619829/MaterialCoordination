@@ -69,6 +69,7 @@ Authorization: Bearer {token}
 | 抢运输单 | POST | `/api/transport-orders/{orderId}/claim` |
 | 开始运输 | POST | `/api/transport-orders/{orderId}/start` |
 | 完成运输 | POST | `/api/transport-orders/{orderId}/complete` |
+| 运输追踪 | GET | `/api/transport-orders/{orderId}/tracking` |
 | 司机出勤 | POST | `/api/drivers/attendance?online=true` |
 | 今日出勤 | GET | `/api/drivers/attendance/today` |
 | 关注采购方列表 | GET | `/api/drivers/follows` |
@@ -79,12 +80,27 @@ Authorization: Bearer {token}
 | 功能 | 方法 | 路径 |
 | --- | --- | --- |
 | 订单时间线 | GET | `/api/orders/{orderId}/timeline` |
+| 智能调度推荐 | GET | `/api/orders/{orderId}/dispatch-recommendations` |
 | 提交履约评价 | POST | `/api/orders/{orderId}/reviews` |
 | 查询履约评价 | GET | `/api/orders/{orderId}/reviews` |
+| 三方履约排行榜 | GET | `/api/rankings/fulfillment` |
 | 消息通知中心 | GET | `/api/notifications` |
 
 订单状态主链路：
 
 ```text
 待供应商确认 -> 待司机接单 -> 司机已接单 -> 运输中 -> 已完成 -> 三方评价
+```
+
+运输订单包含发货地和目的地定位字段：
+
+```json
+{
+  "originAddress": "上海市浦东新区临港物资园",
+  "originLongitude": 121.510000,
+  "originLatitude": 31.230000,
+  "destinationAddress": "上海市徐汇区应急采购中心",
+  "destinationLongitude": 121.430000,
+  "destinationLatitude": 31.180000
+}
 ```

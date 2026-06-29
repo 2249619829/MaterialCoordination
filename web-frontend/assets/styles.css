@@ -778,6 +778,24 @@ button:disabled {
   gap: 8px;
 }
 
+.route-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.route-line small {
+  color: var(--muted);
+}
+
+.route-arrow {
+  color: var(--muted);
+}
+
 .supplier-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1390,10 +1408,45 @@ tbody tr:hover {
   margin-bottom: 18px;
 }
 
+.dispatch-panel {
+  margin-bottom: 18px;
+}
+
+.dispatch-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dispatch-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
 .ranking-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.ranking-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ranking-column {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.ranking-column h3 {
+  font-size: 16px;
+  margin: 0;
 }
 
 .ranking-row {
@@ -1580,6 +1633,8 @@ textarea {
   .stage-grid,
   .rfq-quote-grid,
   .rfq-inline-form,
+  .dispatch-board,
+  .ranking-board,
   .ranking-list,
   .supplier-stats,
   .toolbar,

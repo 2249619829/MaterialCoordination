@@ -26,7 +26,13 @@ function storageFrom(map) {
 
 globalThis.localStorage = storageFrom(localItems);
 globalThis.sessionStorage = storageFrom(sessionItems);
-globalThis.window = { MATERIAL_API_BASE: "" };
+globalThis.window = {
+  MATERIAL_API_BASE: "",
+  location: {
+    protocol: "http:",
+    port: "5173",
+  },
+};
 
 const { state } = await import("./state.js");
 const { defaultPurchaseQuantity } = await import("./utils.js");

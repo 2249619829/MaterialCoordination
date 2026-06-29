@@ -10,6 +10,7 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -78,6 +79,12 @@ public class OrderCreatedConsumer {
         order.setStatus(value(fields, "status"));
         order.setSource(value(fields, "source"));
         order.setPushedTo(value(fields, "pushedTo"));
+        order.setOriginAddress(optionalValue(fields, "originAddress"));
+        order.setOriginLongitude(optionalDecimal(fields, "originLongitude"));
+        order.setOriginLatitude(optionalDecimal(fields, "originLatitude"));
+        order.setDestinationAddress(optionalValue(fields, "destinationAddress"));
+        order.setDestinationLongitude(optionalDecimal(fields, "destinationLongitude"));
+        order.setDestinationLatitude(optionalDecimal(fields, "destinationLatitude"));
         order.setCreateTime(LocalDateTime.parse(value(fields, "createTime")));
         order.setUpdateTime(LocalDateTime.parse(value(fields, "updateTime")));
         return order;
@@ -96,6 +103,16 @@ public class OrderCreatedConsumer {
             throw new IllegalArgumentException("Redis 临时订单缺少字段: " + key);
         }
         return value.toString();
+    }
+
+    private String optionalValue(Map<Object, Object> fields, String key) {
+        Object value = fields.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private BigDecimal optionalDecimal(Map<Object, Object> fields, String key) {
+        String value = optionalValue(fields, key);
+        return value == null || value.isBlank() ? null : new BigDecimal(value);
     }
 
     /**

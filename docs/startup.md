@@ -6,7 +6,44 @@
 
 ## 0. 最快启动流程
 
-如果你的 MySQL、Redis、RabbitMQ、Nacos 已经在本机启动，可以直接按下面顺序开三个终端。
+如果你的 MySQL、Redis、RabbitMQ、Nacos 已经在本机启动，推荐直接用脚本启动和验证：
+
+```bash
+cd "/Users/didi/Desktop/MaterialCoordination"
+scripts/start-local.sh
+scripts/start-openresty.sh
+scripts/smoke-test.sh
+```
+
+脚本会启动：
+
+- `auth-service`：`8081`
+- `gateway-service`：`8080`
+- `web-frontend`：`5173`
+- `openresty`：`8088`
+
+日志在：
+
+```text
+.run/logs/
+```
+
+停止应用：
+
+```bash
+scripts/stop-local.sh
+scripts/stop-openresty.sh
+```
+
+在 Codex 或某些会自动回收后台进程的终端环境里，可以使用前台保活模式：
+
+```bash
+scripts/start-local.sh --keep-alive
+```
+
+这个模式下保持终端窗口打开，按 `Ctrl + C` 会调用停止脚本。
+
+如果想手动启动，也可以按下面顺序开三个终端。
 
 终端一：
 
@@ -37,6 +74,12 @@ npm run start
 http://localhost:5173
 ```
 
+如果要走 OpenResty 统一入口和令牌桶限流，访问：
+
+```text
+http://127.0.0.1:8088
+```
+
 如果是第一次运行，先看第 4 节初始化数据库。
 
 ## 1. 前置条件
@@ -50,6 +93,7 @@ http://localhost:5173
 - RabbitMQ
 - Nacos
 - Python 3
+- OpenResty
 
 如果使用 Docker 启动中间件，还需要 Docker / Docker Compose。
 
@@ -65,6 +109,7 @@ http://localhost:5173
 | Gateway Service | `8080` |
 | Auth Service | `8081` |
 | Frontend | `5173` |
+| OpenResty 统一入口 | `8088` |
 
 ## 3. 启动中间件
 
@@ -121,7 +166,13 @@ mysql -uroot -p
 - `auth-service`：登录、注册、订单、供应商、司机等核心业务。
 - `gateway-service`：统一网关，前端请求默认先访问它。
 
-建议开两个终端分别启动。
+建议优先使用：
+
+```bash
+scripts/start-local.sh
+```
+
+如果手动启动，开两个终端分别执行下面命令。
 
 ### 终端一：启动 Auth Service
 
@@ -153,6 +204,22 @@ Netty started on port 8080
 Started GatewayServiceApplication
 ```
 
+### Nacos 本机 IP 说明
+
+本地开发默认把服务注册到 Nacos 的 IP 固定为 `127.0.0.1`：
+
+```yaml
+spring.cloud.nacos.discovery.ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+```
+
+这样可以避免 Mac 切换网络后，网关从 Nacos 拿到已经失效的内网 IP，导致访问 `/auth/login` 超时。
+
+如果要让同局域网其他设备访问后端，可以按实际机器 IP 覆盖：
+
+```bash
+export NACOS_DISCOVERY_IP=192.168.x.x
+```
+
 ## 6. 启动前端
 
 再开一个终端：
@@ -174,7 +241,81 @@ python3 -m http.server 5173
 http://localhost:5173
 ```
 
-## 7. 验证项目是否启动成功
+## 7. 启动 OpenResty 统一入口
+
+OpenResty 是带 Lua 能力的 Nginx。本项目用它做第一层入口限流：
+
+```text
+浏览器 -> OpenResty:8088 -> gateway-service:8080 -> auth-service:8081
+```
+
+首次使用先安装 OpenResty 和令牌桶 Lua 包：
+
+```bash
+brew tap openresty/brew
+brew trust openresty/brew
+brew install openresty/brew/openresty --without-geoip
+opm get upyun/lua-resty-limit-rate
+```
+
+启动 OpenResty：
+
+```bash
+cd "/Users/didi/Desktop/MaterialCoordination"
+scripts/start-openresty.sh
+```
+
+访问统一入口：
+
+```text
+http://127.0.0.1:8088
+```
+
+这个地址会直接展示前端页面。页面里的 `/auth/**` 和 `/api/**` 请求会先经过 OpenResty 的令牌桶限流，再转发给 Gateway。
+
+OpenResty 当前分三档限流：
+
+| 接口类型 | 默认令牌速度 | 默认桶容量 | 说明 |
+| --- | --- | --- | --- |
+| 登录、注册 | `1/s` | `3` | 防止暴力尝试密码 |
+| 抢购、抢单 | `1/s` | `2` | 保护高并发核心接口 |
+| 普通接口 | `20/s` | `40` | 允许页面加载时的合理突发 |
+
+如果要调整速度，可以设置环境变量后再启动：
+
+```bash
+export OPENRESTY_PORT=8088
+export GATEWAY_HOST=127.0.0.1
+export GATEWAY_PORT=8080
+export RATE_LIMIT_AUTH_REPLENISH_RATE=1
+export RATE_LIMIT_AUTH_BURST_CAPACITY=3
+export RATE_LIMIT_SENSITIVE_REPLENISH_RATE=1
+export RATE_LIMIT_SENSITIVE_BURST_CAPACITY=2
+export RATE_LIMIT_API_REPLENISH_RATE=20
+export RATE_LIMIT_API_BURST_CAPACITY=40
+scripts/start-openresty.sh
+```
+
+停止 OpenResty：
+
+```bash
+scripts/stop-openresty.sh
+```
+
+## 8. 验证项目是否启动成功
+
+推荐直接执行：
+
+```bash
+scripts/smoke-test.sh
+```
+
+脚本会验证：
+
+- 前端首页可访问。
+- 司机账号能通过网关登录。
+- 司机运输单接口返回发货地、目的地和经纬度。
+- 运输追踪接口返回路线信息。
 
 可以直接复制下面这组命令验证：
 
@@ -189,6 +330,12 @@ curl -s \
   http://localhost:8080/auth/login
 ```
 
+如果要验证 OpenResty 入口，把脚本的地址改成 `8088`：
+
+```bash
+FRONTEND_URL=http://127.0.0.1:8088 API_BASE=http://127.0.0.1:8088 scripts/smoke-test.sh
+```
+
 判断标准：
 
 - `8080` 有进程监听：网关启动成功。
@@ -196,6 +343,7 @@ curl -s \
 - `5173` 有进程监听：前端启动成功。
 - `curl -I http://localhost:5173` 返回 `200`：前端页面能访问。
 - 登录接口返回 `code: 200` 和 `token`：后端主链路可用。
+- `curl -I http://127.0.0.1:8088` 返回 `200`：OpenResty 统一入口可用。
 
 ### 检查端口
 
@@ -224,7 +372,7 @@ curl -s \
 
 如果返回里有 `code: 200` 和 `token`，说明网关、业务服务、Redis、MySQL 基本都正常。
 
-## 8. 演示账号
+## 9. 演示账号
 
 密码均为 `123456`。
 
@@ -234,7 +382,7 @@ curl -s \
 | 采购方 | `purchaser01` |
 | 司机 | `driver01` |
 
-## 9. 常见问题
+## 10. 常见问题
 
 ### 不确定项目现在是否已经启动
 
@@ -287,6 +435,14 @@ kill <PID>
 3. `gateway-service` 是否已经启动。
 4. `auth-service` 是否监听 `8081`。
 
+如果 `auth-service` 自己能访问，但通过网关访问超时，通常是 Nacos 里有旧 IP。直接重启应用：
+
+```bash
+scripts/stop-local.sh
+scripts/start-local.sh
+scripts/smoke-test.sh
+```
+
 ### RabbitMQ 连接失败
 
 默认账号密码是：
@@ -303,7 +459,13 @@ RabbitMQ 管理页面：
 http://localhost:15672
 ```
 
-## 10. 停止项目
+## 11. 停止项目
+
+如果使用脚本启动，执行：
+
+```bash
+scripts/stop-local.sh
+```
 
 如果服务是在终端前台启动的，直接按：
 

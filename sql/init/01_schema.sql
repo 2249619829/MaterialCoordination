@@ -149,6 +149,12 @@ CREATE TABLE IF NOT EXISTS purchase_order (
     status VARCHAR(32) NOT NULL,
     source VARCHAR(128) NOT NULL,
     pushed_to VARCHAR(128) NOT NULL,
+    origin_address VARCHAR(255) DEFAULT NULL,
+    origin_longitude DECIMAL(10,6) DEFAULT NULL,
+    origin_latitude DECIMAL(10,6) DEFAULT NULL,
+    destination_address VARCHAR(255) DEFAULT NULL,
+    destination_longitude DECIMAL(10,6) DEFAULT NULL,
+    destination_latitude DECIMAL(10,6) DEFAULT NULL,
     driver_id BIGINT DEFAULT NULL,
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -156,7 +162,9 @@ CREATE TABLE IF NOT EXISTS purchase_order (
     KEY idx_purchase_order_purchaser_id (purchaser_id),
     KEY idx_purchase_order_supplier_id (supplier_id),
     KEY idx_purchase_order_status (status),
-    KEY idx_purchase_order_driver_id (driver_id)
+    KEY idx_purchase_order_driver_id (driver_id),
+    KEY idx_purchase_order_status_driver (status, driver_id),
+    KEY idx_purchase_order_destination (destination_longitude, destination_latitude)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS purchase_rfq (

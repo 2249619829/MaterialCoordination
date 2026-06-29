@@ -211,7 +211,10 @@ export function renderAdminContent() {
     return adminSupplierPanel();
   }
   if (state.page === "orders") {
-    return ordersPanel("订单监控", "平台管理员查看最近 50 条订单，识别异常状态和履约进度。", state.adminOrders);
+    return `
+      ${dispatchRecommendationPanel()}
+      ${ordersPanel("订单监控", "平台管理员查看最近 50 条订单，识别异常状态和履约进度。", state.adminOrders)}
+    `;
   }
   if (state.page === "profile") return profilePanel("管理员资料", "供应商审核、订单监控、MQ 异常补偿和运营大盘。");
 
@@ -230,6 +233,7 @@ export function renderAdminContent() {
       ${statCard("异常/死信", dashboard.abnormalCount ?? 0, "需要处理")}
     </div>
     ${adminOpsPanel(dashboard)}
+    ${dispatchRecommendationPanel()}
     ${ordersPanel("最新订单", "运营端聚合采购、供货和运输状态。", state.adminOrders)}
   `;
 }
@@ -242,7 +246,10 @@ export function renderAdminContent() {
  */
 export function renderPurchaserContent() {
   if (state.page === "orders") {
-    return ordersPanel("我的采购订单", "采购方和供应商都能看到自己的订单状态。", state.purchaserOrders);
+    return `
+      ${dispatchRecommendationPanel()}
+      ${ordersPanel("我的采购订单", "采购方和供应商都能看到自己的订单状态。", state.purchaserOrders)}
+    `;
   }
   if (state.page === "rfqs") {
     return purchaserRfqPanel();
@@ -264,6 +271,7 @@ export function renderPurchaserContent() {
   return `
     ${rankingPanel()}
     ${nearbySuppliersPanel()}
+    ${dispatchRecommendationPanel()}
     ${supplierFiltersPanel()}
     <div class="layout-2">
       <div class="panel">
@@ -302,6 +310,7 @@ export function renderSupplierContent() {
     certifications: ["注册资料待完善"],
     materials: [],
   };
+  const pendingConfirmOrders = state.supplierOrders.filter((order) => isSupplierConfirmationStatus(order.status));
   if (state.page === "materials") {
     return supplierMaterialManager();
   }
@@ -309,7 +318,10 @@ export function renderSupplierContent() {
     return supplierRfqPanel();
   }
   if (state.page === "orders") {
-    return ordersPanel("我的供货订单", "只展示属于当前供应商的订单状态。", state.supplierOrders);
+    return `
+      ${dispatchRecommendationPanel()}
+      ${ordersPanel("我的供货订单", "只展示属于当前供应商的订单状态。", state.supplierOrders)}
+    `;
   }
   if (state.page === "profile") return supplierQualificationPanel();
 
@@ -317,11 +329,38 @@ export function renderSupplierContent() {
     <div class="dashboard-grid">
       ${statCard("供应货物", self?.materials.length || 0, "采购方可见")}
       ${statCard("供货订单", state.supplierOrders.length, "待备货 / 待运输")}
+      ${statCard("待确认", pendingConfirmOrders.length, "确认供货 / 拒单")}
       ${statCard("履约评分", self?.rating || "4.50", "平台评级")}
-      ${statCard("资质数量", self?.certifications.length || 0, "已展示")}
     </div>
+    ${supplierPendingConfirmPanel(pendingConfirmOrders)}
+    ${rankingPanel()}
+    ${dispatchRecommendationPanel()}
     ${mqPanel()}
     ${ordersPanel("最新供货订单", "采购方确认购货后，供应商侧同步可见。", state.supplierOrders)}
+  `;
+}
+
+/**
+ * 作用：生成供应商待确认订单面板。
+ * 输入：
+ * - orders：待供应商确认的订单列表。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
+export function supplierPendingConfirmPanel(orders) {
+  return `
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>待确认供货</h2><div class="muted">普通采购单和高并发抢购成功单都会在这里确认供货或拒单。</div></div>
+        <button class="btn btn-ghost btn-sm" id="refreshData">刷新</button>
+      </div>
+      <div class="panel-body">
+        ${
+          orders.length
+            ? `<div class="task-board">${orders.map((order) => renderOrderCard(order, false)).join("")}</div>`
+            : '<div class="empty">暂无待确认订单。采购方下单或抢购成功后会出现在这里。</div>'
+        }
+      </div>
+    </div>
   `;
 }
 
@@ -864,6 +903,7 @@ export function renderDriverContent() {
       ${statCard("出勤状态", state.attendance?.online ? "在线" : "离线", "Redis BitMap")}
     </div>
     ${driverAttendancePanel()}
+    ${rankingPanel()}
     ${ordersPanel("我的运输订单", "司机接单后在这里推进运输中和已完成状态。", state.driverOrders, false)}
     ${ordersPanel("运输订单大厅", "订单进入平台大厅后，司机可以主动抢单。", state.transportHall, true)}
   `;
@@ -1009,29 +1049,96 @@ export function renderManagedMaterial(material) {
 }
 
 /**
- * 作用：生成供应商排行榜面板 HTML。
+ * 作用：生成三方履约排行榜面板 HTML。
  * 输入：
  * - 无输入参数。
  * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
  */
 export function rankingPanel() {
+  const rankings = state.fulfillmentRankings || {};
+  const purchasers = rankings.purchasers || [];
+  const suppliers = rankings.suppliers?.length
+    ? rankings.suppliers
+    : state.supplierRanking.map((item) => ({
+        participantId: item.supplierId,
+        displayName: item.companyName,
+        ratingScore: item.ratingScore,
+        rank: item.rank,
+      }));
+  const drivers = rankings.drivers || [];
   return `
     <div class="panel ranking-panel">
-      <div class="panel-head"><div><h2>供应商履约排行榜</h2><div class="muted">评价写入 MySQL 后同步 Redis ZSet，用于快速读取 Top 排名。</div></div></div>
-      <div class="panel-body ranking-list">
+      <div class="panel-head"><div><h2>三方履约排行榜</h2><div class="muted">采购方、供应商、司机三类角色都能看到三张履约评分榜。</div></div></div>
+      <div class="panel-body ranking-board">
+        ${rankingList("采购方履约排行榜", purchasers)}
+        ${rankingList("供应商履约排行榜", suppliers)}
+        ${rankingList("司机履约排行榜", drivers)}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 作用：生成智能调度推荐面板 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
+export function dispatchRecommendationPanel() {
+  const recommendations = state.dispatchRecommendations || { orderId: null, items: [] };
+  const items = recommendations.items || [];
+  if (!recommendations.orderId && !items.length) {
+    return "";
+  }
+  return `
+    <div class="panel dispatch-panel">
+      <div class="panel-head">
+        <div><h2>智能调度推荐</h2><div class="muted">按在线状态、发货地距离和司机评分综合排序。</div></div>
+        <span class="chip blue">${escapeHtml(recommendations.orderId || "待接单订单")}</span>
+      </div>
+      <div class="panel-body dispatch-board">
         ${
-          state.supplierRanking.length
-            ? state.supplierRanking.map((item) => `
-                <div class="ranking-row">
-                  <span class="rank-no">#${item.rank}</span>
-                  <strong>${escapeHtml(item.companyName)}</strong>
-                  <span class="chip green">${escapeHtml(item.ratingScore)} 分</span>
-                </div>
+          items.length
+            ? items.map((item) => `
+                <article class="dispatch-card">
+                  <div class="order-top">
+                    <div class="order-title">
+                      <strong>#${escapeHtml(item.rank)} ${escapeHtml(item.driverName)}</strong>
+                      <span>${escapeHtml(item.vehicleNo)} · ${escapeHtml(item.vehicleType)}</span>
+                    </div>
+                    <span class="chip ${item.online ? "green" : "amber"}">${item.online ? "在线" : "离线"}</span>
+                  </div>
+                  <div class="order-meta">
+                    <span class="chip blue">${escapeHtml(item.distanceToOriginKm)} KM</span>
+                    <span class="chip green">${escapeHtml(item.ratingScore)} 分</span>
+                    <span class="chip">推荐分 ${escapeHtml(item.recommendScore)}</span>
+                  </div>
+                  <div class="muted">${escapeHtml(item.reason)}</div>
+                </article>
               `).join("")
-            : '<div class="empty">暂无排行榜数据。</div>'
+            : '<div class="empty">暂无可推荐司机。</div>'
         }
       </div>
     </div>
+  `;
+}
+
+function rankingList(title, items) {
+  return `
+    <section class="ranking-list ranking-column">
+      <h3>${escapeHtml(title)}</h3>
+      ${
+        items.length
+          ? items.map((item) => `
+              <div class="ranking-row">
+                <span class="rank-no">#${item.rank}</span>
+                <strong>${escapeHtml(item.displayName)}</strong>
+                <span class="chip green">${escapeHtml(item.ratingScore)} 分</span>
+              </div>
+            `).join("")
+          : '<div class="empty">暂无排行榜数据。</div>'
+      }
+    </section>
   `;
 }
 
@@ -1718,6 +1825,7 @@ export function renderOrderCard(order, claimable) {
       </div>
       ${orderStatusProgress(order.status)}
       <div class="muted">${escapeHtml(order.source)} · ${escapeHtml(order.pushedTo)}</div>
+      ${orderRouteLine(order)}
       ${order.status === "已完成" ? `<div class="form-note">${escapeHtml(order.acceptanceSummary || "运输完成后由采购方验收签收")}</div>` : ""}
       ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<div class="form-note">${escapeHtml(order.paymentSummary || "验收完成后由采购方登记付款凭证")}</div>` : ""}
       <div class="order-actions">
@@ -1725,6 +1833,31 @@ export function renderOrderCard(order, claimable) {
       </div>
     </article>
   `;
+}
+
+function orderRouteLine(order) {
+  if (!order.originAddress && !order.destinationAddress) {
+    return "";
+  }
+  const origin = order.originAddress || "待确认发货地";
+  const destination = order.destinationAddress || "待确认目的地";
+  const originPoint = formatPoint(order.originLongitude, order.originLatitude);
+  const destinationPoint = formatPoint(order.destinationLongitude, order.destinationLatitude);
+  return `
+    <div class="route-line">
+      <span>${escapeHtml(origin)}</span>
+      <span class="route-arrow">-></span>
+      <span>${escapeHtml(destination)}</span>
+      ${originPoint || destinationPoint ? `<small>${escapeHtml(originPoint)} / ${escapeHtml(destinationPoint)}</small>` : ""}
+    </div>
+  `;
+}
+
+function formatPoint(longitude, latitude) {
+  if (longitude === null || longitude === undefined || latitude === null || latitude === undefined) {
+    return "";
+  }
+  return `${longitude}, ${latitude}`;
 }
 
 /**
@@ -1739,7 +1872,7 @@ export function orderActions(order, claimable) {
   if (order.pushStatus === "PENDING") {
     actions.push(actionButton("read-push", order.id, "标记已读", "btn-ghost", `read-push:${order.id}`));
   }
-  if (state.user.userType === "SUPPLIER" && order.status === "待供应商确认") {
+  if (state.user.userType === "SUPPLIER" && isSupplierConfirmationStatus(order.status)) {
     actions.push(actionButton("confirm-supplier-order", order.id, "确认供货", "btn-primary", `confirm-supplier-order:${order.id}`));
     actions.push(actionButton("reject-supplier-order", order.id, "拒单", "btn-danger", `reject-supplier-order:${order.id}`));
   }
@@ -1763,6 +1896,10 @@ export function orderActions(order, claimable) {
   }
   actions.push(`<button class="btn btn-ghost btn-sm" data-order-timeline="${order.id}">时间线</button>`);
   return actions;
+}
+
+function isSupplierConfirmationStatus(status) {
+  return status === "待供应商确认" || status === "采购方已抢购";
 }
 
 function paymentStatusClass(status) {
@@ -1864,7 +2001,8 @@ export function qualificationStatusClass(status) {
  * 输出：返回数字，表示订单进度百分比。
  */
 export function orderStatusProgress(status) {
-  const currentIndex = orderStatusFlow.indexOf(status);
+  const progressStatus = status === "采购方已抢购" ? "待供应商确认" : status;
+  const currentIndex = orderStatusFlow.indexOf(progressStatus);
   if (currentIndex < 0) {
     return `<div class="order-progress-line rejected"><span>${escapeHtml(status)}</span></div>`;
   }

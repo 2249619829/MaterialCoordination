@@ -8,8 +8,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.material.auth.dto.business.AdminDashboardView;
 import com.material.auth.dto.business.AdminSupplierAuditView;
 import com.material.auth.dto.business.DeadLetterStatsView;
+import com.material.auth.dto.business.DispatchRecommendationView;
 import com.material.auth.dto.business.DriverAttendanceView;
 import com.material.auth.dto.business.DriverFollowView;
+import com.material.auth.dto.business.FulfillmentRankingsView;
 import com.material.auth.dto.business.MaterialOptionView;
 import com.material.auth.dto.business.NearbySupplierView;
 import com.material.auth.dto.business.NotificationView;
@@ -34,6 +36,7 @@ import com.material.auth.dto.business.SupplierQualificationRequest;
 import com.material.auth.dto.business.SupplierQualificationView;
 import com.material.auth.dto.business.SupplierRankingView;
 import com.material.auth.dto.business.SupplierStoreView;
+import com.material.auth.dto.business.TransportTrackingView;
 import com.material.auth.config.OrderRabbitConfig;
 import com.material.auth.entity.DriverFollow;
 import com.material.auth.entity.DriverProfile;
@@ -67,6 +70,8 @@ import com.material.auth.mapper.SupplierAccountMapper;
 import com.material.auth.entity.SupplierAccount;
 import com.material.auth.service.geo.Coordinates;
 import com.material.auth.service.geo.GeocodingService;
+import com.material.auth.service.impl.support.DispatchRecommendationSupport;
+import com.material.auth.service.impl.support.FulfillmentRankingSupport;
 import com.material.common.enums.AccountStatus;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -106,6 +111,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static com.material.auth.service.impl.support.OrderLifecycleSupport.*;
+
 @Service
 public class BusinessDemoService {
     private static final Logger log = LoggerFactory.getLogger(BusinessDemoService.class);
@@ -117,17 +124,14 @@ public class BusinessDemoService {
     private static final String ORDER_SUPPLIER_REJECTED = "供应商已拒单";
     private static final String ORDER_PANIC_BUYING = "待抢购";
     private static final String ORDER_PURCHASER_CLAIMED = "采购方已抢购";
+    private static final Set<String> ORDER_SUPPLIER_ACTIONABLE_STATUSES = Set.of(
+            ORDER_WAITING_SUPPLIER_CONFIRM,
+            ORDER_PURCHASER_CLAIMED
+    );
     private static final String RFQ_OPEN = "OPEN";
     private static final String RFQ_AWARDED = "AWARDED";
     private static final String QUOTE_ACTIVE = "ACTIVE";
     private static final String QUOTE_SELECTED = "SELECTED";
-    private static final String ACCEPTANCE_ACCEPTED = "ACCEPTED";
-    private static final String ACCEPTANCE_EXCEPTION = "EXCEPTION";
-    private static final String PAYMENT_PENDING = "PENDING";
-    private static final String PAYMENT_PAID = "PAID";
-    private static final String PAYMENT_TIMEOUT = "TIMEOUT";
-    private static final Duration PAYMENT_TIMEOUT_DURATION = Duration.ofHours(1);
-    private static final Set<String> PAYMENT_METHODS = Set.of("BANK_TRANSFER", "CORPORATE_CARD", "OFFLINE");
     private static final String AUDIT_PENDING = "PENDING";
     private static final String AUDIT_APPROVED = "APPROVED";
     private static final String AUDIT_REJECTED = "REJECTED";
@@ -145,11 +149,25 @@ public class BusinessDemoService {
     private static final String TARGET_ADMIN = "ADMIN";
     private static final String PANIC_STOCK_KEY_PREFIX = "panic:stock:";
     private static final String PANIC_BUYER_KEY_PREFIX = "panic:buyer:";
+    private static final String TRANSPORT_CLAIM_STOCK_KEY_PREFIX = "transport:claim:stock:";
+    private static final String TRANSPORT_CLAIM_DRIVER_KEY_PREFIX = "transport:claim:driver:";
     private static final String PUSH_STATUS_READ = "READ";
     private static final String PUSH_STATUS_CLAIMED = "CLAIMED";
     private static final Duration PENDING_ORDER_TTL = Duration.ofMinutes(30);
     private static final Duration EMPTY_CATALOG_TTL = Duration.ofSeconds(60);
     private static final DefaultRedisScript<Long> PANIC_BUY_SCRIPT = new DefaultRedisScript<>("""
+            local stock = tonumber(redis.call('GET', KEYS[1]) or '0')
+            if stock <= 0 then
+                return 1
+            end
+            if redis.call('EXISTS', KEYS[2]) == 1 then
+                return 2
+            end
+            redis.call('DECR', KEYS[1])
+            redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])
+            return 0
+            """, Long.class);
+    private static final DefaultRedisScript<Long> TRANSPORT_CLAIM_SCRIPT = new DefaultRedisScript<>("""
             local stock = tonumber(redis.call('GET', KEYS[1]) or '0')
             if stock <= 0 then
                 return 1
@@ -335,7 +353,12 @@ public class BusinessDemoService {
         supplier.setContactPhone(requiredText(request.contactPhone(), "联系电话"));
         supplier.setLicenseNo(requiredText(request.licenseNo(), "营业执照编号"));
         String address = requiredText(request.address(), "经营地址");
-        Coordinates coordinates = resolveRequiredCoordinates(address, request.longitude(), request.latitude());
+        boolean addressChangedWithOldCoordinates = !address.equals(supplier.getAddress())
+                && sameCoordinate(request.longitude(), supplier.getLongitude())
+                && sameCoordinate(request.latitude(), supplier.getLatitude());
+        Coordinates coordinates = addressChangedWithOldCoordinates
+                ? resolveRequiredCoordinates(address, null, null)
+                : resolveRequiredCoordinates(address, request.longitude(), request.latitude());
         supplier.setAddress(address);
         supplier.setLongitude(coordinates.longitude());
         supplier.setLatitude(coordinates.latitude());
@@ -507,6 +530,10 @@ public class BusinessDemoService {
         }
     }
 
+    private boolean sameCoordinate(BigDecimal left, BigDecimal right) {
+        return left != null && right != null && left.compareTo(right) == 0;
+    }
+
     /**
      * 作用：根据物资分类生成一个新的物资编码。
      * 输入：
@@ -653,6 +680,32 @@ public class BusinessDemoService {
                 .toList();
     }
 
+    public TransportTrackingView transportTracking(Long userId, String userType, String orderId) {
+        PurchaseOrder order = purchaseOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new IllegalArgumentException("订单不存在");
+        }
+        assertOrderVisibleToUser(order, userId, userType);
+        List<OrderTimelineView> timeline = orderTimelineMapper.selectList(new LambdaQueryWrapper<OrderTimeline>()
+                        .eq(OrderTimeline::getOrderId, orderId)
+                        .orderByAsc(OrderTimeline::getCreateTime))
+                .stream()
+                .map(this::toOrderTimelineView)
+                .toList();
+        return new TransportTrackingView(
+                order.getId(),
+                order.getStatus(),
+                order.getDriverId(),
+                order.getOriginAddress(),
+                order.getOriginLongitude(),
+                order.getOriginLatitude(),
+                order.getDestinationAddress(),
+                order.getDestinationLongitude(),
+                order.getDestinationLatitude(),
+                timeline
+        );
+    }
+
     /**
      * 作用：查询供应商履约评分排行榜。
      * 输入：
@@ -660,8 +713,11 @@ public class BusinessDemoService {
      * 输出：返回 List<SupplierRankingView>，也就是一组结果列表；列表里的每一项都是页面或后续代码要用的数据。
      */
     public List<SupplierRankingView> supplierRanking() {
-        Set<ZSetOperations.TypedTuple<String>> tuples = redisTemplate.opsForZSet()
-                .reverseRangeWithScores(SUPPLIER_RANKING_KEY, 0, 9);
+        ZSetOperations<String, String> zSetOperations = redisTemplate.opsForZSet();
+        if (zSetOperations == null) {
+            return rebuildSupplierRankingFromDb();
+        }
+        Set<ZSetOperations.TypedTuple<String>> tuples = zSetOperations.reverseRangeWithScores(SUPPLIER_RANKING_KEY, 0, 9);
         if (tuples == null || tuples.isEmpty()) {
             return rebuildSupplierRankingFromDb();
         }
@@ -683,6 +739,20 @@ public class BusinessDemoService {
             }
         }
         return ranking;
+    }
+
+    public FulfillmentRankingsView fulfillmentRankings() {
+        List<OrderReview> reviews = nullSafe(orderReviewMapper.selectList(new LambdaQueryWrapper<OrderReview>()
+                .in(OrderReview::getTargetType, TARGET_PURCHASER, TARGET_SUPPLIER, TARGET_DRIVER)));
+        List<PurchaserProfile> purchasers = nullSafe(purchaserProfileMapper.selectList(new LambdaQueryWrapper<PurchaserProfile>()));
+        List<DriverProfile> drivers = nullSafe(driverProfileMapper.selectList(new LambdaQueryWrapper<DriverProfile>()
+                .orderByDesc(DriverProfile::getRatingScore)));
+        return FulfillmentRankingSupport.create(
+                reviews,
+                purchasers,
+                supplierRanking(),
+                drivers
+        );
     }
 
     /**
@@ -1133,6 +1203,33 @@ public class BusinessDemoService {
     }
 
     /**
+     * 作用：为等待司机接单的订单推荐合适运力。
+     * 输入：
+     * - userId：当前用户编号，用于判断订单可见性。
+     * - userType：当前用户角色，用于判断订单可见性。
+     * - orderId：订单编号，方法会基于订单发货地计算司机距离。
+     * 输出：返回 List<DispatchRecommendationView>，按在线、距离、评分综合排序。
+     */
+    public List<DispatchRecommendationView> dispatchRecommendations(Long userId, String userType, String orderId) {
+        PurchaseOrder order = purchaseOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new IllegalArgumentException("订单不存在");
+        }
+        assertDispatchRecommendationVisible(order, userId, userType);
+        if (!ORDER_WAITING_DRIVER.equals(order.getStatus())) {
+            throw new IllegalStateException("订单尚未进入待司机接单状态");
+        }
+        if (order.getOriginLongitude() == null || order.getOriginLatitude() == null) {
+            throw new IllegalStateException("订单缺少发货地经纬度，无法推荐司机");
+        }
+        return DispatchRecommendationSupport.rank(
+                order,
+                nullSafe(driverProfileMapper.selectList(new LambdaQueryWrapper<DriverProfile>())),
+                5
+        );
+    }
+
+    /**
      * 作用：查询正在抢购中的订单资源。
      * 输入：
      * - 无输入参数。
@@ -1307,6 +1404,7 @@ public class BusinessDemoService {
         order.setStatus(ORDER_WAITING_SUPPLIER_CONFIRM);
         order.setSource("采购方提交采购清单，等待供应商确认");
         order.setPushedTo("供应商确认后推送给关注关系司机");
+        applyOrderPlaces(order, supplier, purchaser);
         order.setCreateTime(LocalDateTime.now());
         order.setUpdateTime(order.getCreateTime());
         return order;
@@ -1331,9 +1429,24 @@ public class BusinessDemoService {
         order.setStatus(ORDER_WAITING_SUPPLIER_CONFIRM);
         order.setSource("采购方采纳询价 RFQ-" + rfq.getId() + " 报价，等待供应商确认");
         order.setPushedTo("询价报价已采纳，供应商确认后推送给关注关系司机");
+        applyOrderPlaces(order, supplier, purchaser);
+        if (StringUtils.hasText(rfq.getDeliveryAddress())) {
+            order.setDestinationAddress(rfq.getDeliveryAddress());
+            order.setDestinationLongitude(rfq.getLongitude());
+            order.setDestinationLatitude(rfq.getLatitude());
+        }
         order.setCreateTime(LocalDateTime.now());
         order.setUpdateTime(order.getCreateTime());
         return order;
+    }
+
+    private void applyOrderPlaces(PurchaseOrder order, SupplierProfile supplier, PurchaserProfile purchaser) {
+        order.setOriginAddress(supplier.getAddress());
+        order.setOriginLongitude(supplier.getLongitude());
+        order.setOriginLatitude(supplier.getLatitude());
+        order.setDestinationAddress(purchaser.getAddress());
+        order.setDestinationLongitude(purchaser.getLongitude());
+        order.setDestinationLatitude(purchaser.getLatitude());
     }
 
     /**
@@ -1404,7 +1517,7 @@ public class BusinessDemoService {
     @Transactional
     public PurchaseOrderView confirmSupplierOrder(Long supplierId, String orderId) {
         PurchaseOrder order = findOrderForSupplier(supplierId, orderId);
-        if (!ORDER_WAITING_SUPPLIER_CONFIRM.equals(order.getStatus())) {
+        if (!ORDER_SUPPLIER_ACTIONABLE_STATUSES.contains(order.getStatus())) {
             throw new IllegalStateException("订单当前状态不能确认供货");
         }
         int quantity = parseOrderQuantity(order.getQuantity());
@@ -1425,7 +1538,7 @@ public class BusinessDemoService {
         int orderRows = purchaseOrderMapper.update(update, new LambdaUpdateWrapper<PurchaseOrder>()
                 .eq(PurchaseOrder::getId, orderId)
                 .eq(PurchaseOrder::getSupplierId, supplierId)
-                .eq(PurchaseOrder::getStatus, ORDER_WAITING_SUPPLIER_CONFIRM));
+                .in(PurchaseOrder::getStatus, ORDER_SUPPLIER_ACTIONABLE_STATUSES));
         if (orderRows <= 0) {
             throw new IllegalStateException("订单状态已变化，请刷新后重试");
         }
@@ -1454,7 +1567,7 @@ public class BusinessDemoService {
     @Transactional
     public PurchaseOrderView rejectSupplierOrder(Long supplierId, String orderId) {
         PurchaseOrder order = findOrderForSupplier(supplierId, orderId);
-        if (!ORDER_WAITING_SUPPLIER_CONFIRM.equals(order.getStatus())) {
+        if (!ORDER_SUPPLIER_ACTIONABLE_STATUSES.contains(order.getStatus())) {
             throw new IllegalStateException("订单当前状态不能拒单");
         }
         PurchaseOrder update = new PurchaseOrder();
@@ -1464,7 +1577,7 @@ public class BusinessDemoService {
         int rows = purchaseOrderMapper.update(update, new LambdaUpdateWrapper<PurchaseOrder>()
                 .eq(PurchaseOrder::getId, orderId)
                 .eq(PurchaseOrder::getSupplierId, supplierId)
-                .eq(PurchaseOrder::getStatus, ORDER_WAITING_SUPPLIER_CONFIRM));
+                .in(PurchaseOrder::getStatus, ORDER_SUPPLIER_ACTIONABLE_STATUSES));
         if (rows <= 0) {
             throw new IllegalStateException("订单状态已变化，请刷新后重试");
         }
@@ -1484,37 +1597,48 @@ public class BusinessDemoService {
     @Transactional
     public PurchaseOrderView claimTransportOrder(Long driverId, String orderId) {
         findDriver(driverId);
-        PurchaseOrder claimedOrder = new PurchaseOrder();
-        claimedOrder.setStatus(ORDER_CLAIMED);
-        claimedOrder.setDriverId(driverId);
-        claimedOrder.setPushedTo("司机 " + driverId + " 已抢单");
-        claimedOrder.setUpdateTime(LocalDateTime.now());
-        int affectedRows = purchaseOrderMapper.update(claimedOrder, new LambdaUpdateWrapper<PurchaseOrder>()
-                .eq(PurchaseOrder::getId, orderId)
-                .eq(PurchaseOrder::getStatus, ORDER_WAITING_DRIVER)
-                .isNull(PurchaseOrder::getDriverId));
         PurchaseOrder existingOrder = purchaseOrderMapper.selectById(orderId);
         if (existingOrder == null) {
             throw new IllegalArgumentException("订单不存在");
         }
-        if (affectedRows <= 0) {
-            if (ORDER_CLAIMED.equals(existingOrder.getStatus()) && driverId.equals(existingOrder.getDriverId())) {
-                return toPurchaseOrderView(existingOrder, PUSH_STATUS_CLAIMED);
-            }
+        if (ORDER_CLAIMED.equals(existingOrder.getStatus()) && driverId.equals(existingOrder.getDriverId())) {
+            return toPurchaseOrderView(existingOrder, PUSH_STATUS_CLAIMED);
+        }
+        if (!ORDER_WAITING_DRIVER.equals(existingOrder.getStatus()) || existingOrder.getDriverId() != null) {
             throw new IllegalStateException("订单已被抢或当前状态不可抢");
         }
-        OrderPushRecord pushRecord = orderPushRecordMapper.selectOne(new LambdaQueryWrapper<OrderPushRecord>()
-                .eq(OrderPushRecord::getDriverId, driverId)
-                .eq(OrderPushRecord::getOrderId, orderId));
-        if (pushRecord != null) {
-            pushRecord.setStatus(PUSH_STATUS_CLAIMED);
-            pushRecord.setUpdateTime(LocalDateTime.now());
-            orderPushRecordMapper.updateById(pushRecord);
+
+        initTransportClaimStockIfNecessary(orderId);
+        String stockKey = TRANSPORT_CLAIM_STOCK_KEY_PREFIX + orderId;
+        String driverKey = TRANSPORT_CLAIM_DRIVER_KEY_PREFIX + orderId + ":" + driverId;
+        Long result = redisTemplate.execute(
+                TRANSPORT_CLAIM_SCRIPT,
+                List.of(stockKey, driverKey),
+                String.valueOf(driverId),
+                String.valueOf(Duration.ofHours(2).toSeconds())
+        );
+        if (result == null) {
+            throw new IllegalStateException("Redis 抢单结果为空，请稍后重试");
         }
-        addTimeline(orderId, ORDER_CLAIMED, "司机抢运输单", TARGET_DRIVER, driverId, "司机已接单，等待发车运输");
-        existingOrder = purchaseOrderMapper.selectById(orderId);
+        if (result == 1L) {
+            throw new IllegalStateException("订单已被抢或当前状态不可抢");
+        }
+        if (result == 2L) {
+            throw new IllegalStateException("司机已提交过该订单抢单请求，请稍后查看结果");
+        }
+
+        rabbitTemplate.convertAndSend(
+                OrderRabbitConfig.ORDER_EXCHANGE,
+                OrderRabbitConfig.ORDER_CLAIMED_ROUTING_KEY,
+                "transport:" + orderId + ":" + driverId
+        );
+        addTimeline(orderId, ORDER_CLAIMED, "司机抢运输单预占成功", TARGET_DRIVER, driverId,
+                "Redis Lua 已完成运力名额预占，RabbitMQ 异步绑定司机");
+        existingOrder.setStatus(ORDER_CLAIMED);
+        existingOrder.setDriverId(driverId);
+        existingOrder.setPushedTo("司机 " + driverId + " 已抢单，等待异步落库确认");
         log.info("business_event event=driver_claimed_order orderId={} driverId={}", orderId, driverId);
-        return toPurchaseOrderView(existingOrder);
+        return toPurchaseOrderView(existingOrder, PUSH_STATUS_CLAIMED);
     }
 
     /**
@@ -1960,104 +2084,14 @@ public class BusinessDemoService {
                 payment == null ? "待付款" : paymentStatusText(payment.getStatus()),
                 payment == null ? "验收完成后由采购方登记付款凭证" : paymentSummary(payment),
                 payment == null || payment.getExpiresAt() == null ? "" : payment.getExpiresAt().format(VIEW_TIME_FORMATTER),
-                payment == null ? "" : payment.getProofUrl()
+                payment == null ? "" : payment.getProofUrl(),
+                order.getOriginAddress(),
+                order.getOriginLongitude(),
+                order.getOriginLatitude(),
+                order.getDestinationAddress(),
+                order.getDestinationLongitude(),
+                order.getDestinationLatitude()
         );
-    }
-
-    private String normalizeAcceptanceResult(String result) {
-        if (!StringUtils.hasText(result)) {
-            return ACCEPTANCE_ACCEPTED;
-        }
-        String normalized = result.trim().toUpperCase();
-        if (ACCEPTANCE_ACCEPTED.equals(normalized) || ACCEPTANCE_EXCEPTION.equals(normalized)) {
-            return normalized;
-        }
-        throw new IllegalArgumentException("验收结果只能是 ACCEPTED 或 EXCEPTION");
-    }
-
-    private String acceptanceStatusText(String result) {
-        return ACCEPTANCE_EXCEPTION.equals(result) ? "异常验收" : "已验收";
-    }
-
-    private String acceptanceSummary(OrderAcceptance acceptance) {
-        return acceptanceStatusText(acceptance.getAcceptanceResult())
-                + " · 签收人 " + acceptance.getSignerName()
-                + " · " + acceptance.getRemark();
-    }
-
-    private BigDecimal requirePositiveAmount(BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("付款金额必须大于 0");
-        }
-        return amount.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private String normalizePaymentMethod(String method) {
-        String normalized = StringUtils.hasText(method) ? method.trim().toUpperCase() : "BANK_TRANSFER";
-        if (!PAYMENT_METHODS.contains(normalized)) {
-            throw new IllegalArgumentException("付款方式只能是 BANK_TRANSFER、CORPORATE_CARD 或 OFFLINE");
-        }
-        return normalized;
-    }
-
-    private String paymentStatusText(String status) {
-        if (PAYMENT_PAID.equals(status)) {
-            return "已付款";
-        }
-        if (PAYMENT_TIMEOUT.equals(status)) {
-            return "支付超时";
-        }
-        return "待付款";
-    }
-
-    private String paymentMethodText(String method) {
-        return switch (method) {
-            case "CORPORATE_CARD" -> "企业卡";
-            case "OFFLINE" -> "线下付款";
-            default -> "对公转账";
-        };
-    }
-
-    private String paymentSummary(OrderPayment payment) {
-        if (PAYMENT_TIMEOUT.equals(payment.getStatus())) {
-            return "支付超时 · 付款单已超过1小时，请联系管理员重新开启付款";
-        }
-        if (PAYMENT_PENDING.equals(payment.getStatus())) {
-            return "待付款 · 请在1小时内完成付款"
-                    + (payment.getExpiresAt() == null ? "" : " · 截止 " + payment.getExpiresAt().format(VIEW_TIME_FORMATTER));
-        }
-        return paymentStatusText(payment.getStatus())
-                + " · ¥" + payment.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString()
-                + " · " + paymentMethodText(payment.getPaymentMethod())
-                + " · 流水号 " + payment.getPaymentReference()
-                + " · " + payment.getRemark();
-    }
-
-    private OrderPayment pendingPaymentFor(PurchaseOrder order, Long purchaserId, LocalDateTime createTime) {
-        OrderPayment payment = new OrderPayment();
-        payment.setOrderId(order.getId());
-        payment.setPurchaserId(purchaserId);
-        payment.setAmount(parseOrderAmount(order.getAmount()));
-        payment.setPaymentMethod("BANK_TRANSFER");
-        payment.setPaymentReference("WAITING-" + order.getId());
-        payment.setStatus(PAYMENT_PENDING);
-        payment.setRemark("验收完成，请在1小时内完成付款");
-        payment.setExpiresAt(createTime.plus(PAYMENT_TIMEOUT_DURATION));
-        payment.setCreateTime(createTime);
-        payment.setUpdateTime(createTime);
-        return payment;
-    }
-
-    private BigDecimal parseOrderAmount(String amount) {
-        String normalized = StringUtils.hasText(amount) ? amount.replaceAll("[^0-9.]", "") : "";
-        if (!StringUtils.hasText(normalized)) {
-            return BigDecimal.ONE;
-        }
-        return requirePositiveAmount(new BigDecimal(normalized));
-    }
-
-    private boolean paymentExpired(OrderPayment payment, LocalDateTime now) {
-        return payment.getExpiresAt() != null && !payment.getExpiresAt().isAfter(now);
     }
 
     /**
@@ -2755,6 +2789,19 @@ public class BusinessDemoService {
         throw new IllegalStateException("只能查看自己参与订单的评价");
     }
 
+    private void assertDispatchRecommendationVisible(PurchaseOrder order, Long userId, String userType) {
+        if (TARGET_ADMIN.equals(userType)) {
+            return;
+        }
+        if (TARGET_PURCHASER.equals(userType) && userId.equals(order.getPurchaserId())) {
+            return;
+        }
+        if (TARGET_SUPPLIER.equals(userType) && userId.equals(order.getSupplierId())) {
+            return;
+        }
+        throw new IllegalStateException("只能查看自己参与订单的调度推荐");
+    }
+
     /**
      * 作用：把评价对象类型统一转换成系统使用的标准值。
      * 输入：
@@ -2833,12 +2880,15 @@ public class BusinessDemoService {
                 .stream()
                 .sorted(Comparator.comparing(SupplierProfile::getRatingScore).reversed())
                 .toList();
-        for (SupplierProfile supplier : suppliers) {
-            redisTemplate.opsForZSet().add(
-                    SUPPLIER_RANKING_KEY,
-                    String.valueOf(supplier.getSupplierId()),
-                    supplier.getRatingScore().doubleValue()
-            );
+        ZSetOperations<String, String> zSetOperations = redisTemplate.opsForZSet();
+        if (zSetOperations != null) {
+            for (SupplierProfile supplier : suppliers) {
+                zSetOperations.add(
+                        SUPPLIER_RANKING_KEY,
+                        String.valueOf(supplier.getSupplierId()),
+                        supplier.getRatingScore().doubleValue()
+                );
+            }
         }
         List<SupplierRankingView> ranking = new ArrayList<>();
         for (int index = 0; index < suppliers.size(); index++) {
@@ -2927,6 +2977,14 @@ public class BusinessDemoService {
         }
     }
 
+    private void initTransportClaimStockIfNecessary(String orderId) {
+        String stockKey = TRANSPORT_CLAIM_STOCK_KEY_PREFIX + orderId;
+        Boolean initialized = redisTemplate.opsForValue().setIfAbsent(stockKey, "1", Duration.ofHours(2));
+        if (Boolean.TRUE.equals(initialized)) {
+            redisTemplate.opsForValue().set(stockKey, "1", Duration.ofHours(2));
+        }
+    }
+
     /**
      * 作用：把待异步落库的订单写入 Redis。
      * 输入：
@@ -2949,10 +3007,26 @@ public class BusinessDemoService {
         fields.put("status", order.getStatus());
         fields.put("source", order.getSource());
         fields.put("pushedTo", order.getPushedTo());
+        putIfPresent(fields, "originAddress", order.getOriginAddress());
+        putIfPresent(fields, "originLongitude", decimalString(order.getOriginLongitude()));
+        putIfPresent(fields, "originLatitude", decimalString(order.getOriginLatitude()));
+        putIfPresent(fields, "destinationAddress", order.getDestinationAddress());
+        putIfPresent(fields, "destinationLongitude", decimalString(order.getDestinationLongitude()));
+        putIfPresent(fields, "destinationLatitude", decimalString(order.getDestinationLatitude()));
         fields.put("createTime", order.getCreateTime().toString());
         fields.put("updateTime", order.getUpdateTime().toString());
         redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, PENDING_ORDER_TTL);
+    }
+
+    private void putIfPresent(Map<String, String> fields, String key, String value) {
+        if (StringUtils.hasText(value)) {
+            fields.put(key, value);
+        }
+    }
+
+    private String decimalString(BigDecimal value) {
+        return value == null ? null : value.toPlainString();
     }
 
 }

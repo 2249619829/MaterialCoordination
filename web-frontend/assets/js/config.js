@@ -1,4 +1,8 @@
-export const apiBase = window.MATERIAL_API_BASE || "http://localhost:8080";
+const defaultApiBase = window.location.protocol === "file:" || window.location.port === "5173"
+  ? "http://localhost:8080"
+  : "";
+
+export const apiBase = window.MATERIAL_API_BASE || defaultApiBase;
 export const cartStorageKey = "material_purchase_cart";
 export const sessionTokenStorageKey = "material_token";
 export const sessionUserStorageKey = "material_user";

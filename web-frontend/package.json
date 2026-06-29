@@ -6,6 +6,7 @@
   "description": "Enterprise SPA prototype for the material coordination platform.",
   "scripts": {
     "start": "python3 -m http.server 5173",
-    "serve": "python3 -m http.server 5173"
+    "serve": "python3 -m http.server 5173",
+    "test": "node --test assets/app.test.js assets/js/selectors.test.js"
   }
 }

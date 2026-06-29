@@ -13,6 +13,7 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
     gateway:
       server:
         webflux:
@@ -34,11 +35,47 @@ spring:
             locator:
               enabled: true
           routes:
+            - id: auth-public
+              uri: lb://auth-service
+              predicates:
+                - Path=/auth/login,/auth/register
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@rateLimitKeyResolver}"
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_AUTH_REPLENISH_RATE:1}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_AUTH_BURST_CAPACITY:3}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_AUTH_REQUESTED_TOKENS:1}
+            - id: business-sensitive
+              uri: lb://auth-service
+              predicates:
+                - Path=/api/purchase-orders/{orderId}/panic-buy,/api/transport-orders/{orderId}/claim
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@rateLimitKeyResolver}"
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_SENSITIVE_REPLENISH_RATE:1}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_SENSITIVE_BURST_CAPACITY:2}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_SENSITIVE_REQUESTED_TOKENS:1}
             - id: auth-service
               uri: lb://auth-service
               predicates:
                 - Path=/auth/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@rateLimitKeyResolver}"
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_API_REPLENISH_RATE:20}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_API_BURST_CAPACITY:40}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_API_REQUESTED_TOKENS:1}
             - id: business-demo-service
               uri: lb://auth-service
               predicates:
                 - Path=/api/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@rateLimitKeyResolver}"
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_API_REPLENISH_RATE:20}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_API_BURST_CAPACITY:40}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_API_REQUESTED_TOKENS:1}

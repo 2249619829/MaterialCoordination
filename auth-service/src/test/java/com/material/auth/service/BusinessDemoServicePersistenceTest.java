@@ -1,6 +1,8 @@
 package com.material.auth.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.MybatisMapperBuilderAssistant;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.material.auth.config.OrderRabbitConfig;
 import com.material.auth.dto.business.OrderAcceptanceRequest;
 import com.material.auth.dto.business.OrderPaymentRequest;
@@ -12,8 +14,10 @@ import com.material.auth.entity.PurchaseRfq;
 import com.material.auth.entity.PurchaseRfqQuote;
 import com.material.auth.dto.business.SupplierMaterialManageRequest;
 import com.material.auth.entity.Material;
+import com.material.auth.entity.DriverProfile;
 import com.material.auth.entity.OrderAcceptance;
 import com.material.auth.entity.OrderPayment;
+import com.material.auth.entity.OrderReview;
 import com.material.auth.entity.PurchaseOrder;
 import com.material.auth.entity.PurchaserProfile;
 import com.material.auth.entity.SupplierMaterial;
@@ -37,12 +41,15 @@ import com.material.auth.mapper.SupplierAccountMapper;
 import com.material.auth.service.geo.Coordinates;
 import com.material.auth.service.geo.GeocodingService;
 import com.material.auth.service.impl.BusinessDemoService;
+import org.apache.ibatis.session.Configuration;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,6 +63,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.never;
@@ -103,9 +112,27 @@ class BusinessDemoServicePersistenceTest {
     @Mock
     private HashOperations<String, Object, Object> hashOperations;
     @Mock
+    private ValueOperations<String, String> valueOperations;
+    @Mock
     private ObjectMapper objectMapper;
     @Mock
     private GeocodingService geocodingService;
+
+    @BeforeEach
+    void initMybatisPlusLambdaCache() {
+        initTableInfo(SupplierMaterial.class);
+        initTableInfo(PurchaseOrder.class);
+        initTableInfo(OrderReview.class);
+        initTableInfo(SupplierProfile.class);
+        initTableInfo(PurchaserProfile.class);
+        initTableInfo(DriverProfile.class);
+    }
+
+    private void initTableInfo(Class<?> entityType) {
+        if (TableInfoHelper.getTableInfo(entityType) == null) {
+            TableInfoHelper.initTableInfo(new MybatisMapperBuilderAssistant(new Configuration(), ""), entityType);
+        }
+    }
 
     /**
      * 作用：完成 createOrderCachesPendingOrderPublishesMqAndReadsOrdersFromMapper 这一步处理。
@@ -140,6 +167,12 @@ class BusinessDemoServicePersistenceTest {
         verify(purchaseOrderMapper, never()).insert(any(PurchaseOrder.class));
         assertThat(fieldsCaptor.getValue()).containsEntry("id", order.id());
         assertThat(fieldsCaptor.getValue()).containsEntry("status", "待供应商确认");
+        assertThat(fieldsCaptor.getValue()).containsEntry("originAddress", "上海市浦东新区临港物资园");
+        assertThat(fieldsCaptor.getValue()).containsEntry("destinationAddress", "上海市徐汇区应急采购中心");
+        assertThat(order.originLongitude()).isEqualByComparingTo("121.510000");
+        assertThat(order.originLatitude()).isEqualByComparingTo("31.230000");
+        assertThat(order.destinationLongitude()).isEqualByComparingTo("121.430000");
+        assertThat(order.destinationLatitude()).isEqualByComparingTo("31.180000");
 
         PurchaseOrder persistedOrder = new PurchaseOrder();
         persistedOrder.setId(order.id());
@@ -212,6 +245,45 @@ class BusinessDemoServicePersistenceTest {
     }
 
     @Test
+    void driverClaimReservesTransportOrderWithRedisAndPublishesMqBeforeDatabaseAssignment() {
+        BusinessDemoService service = service();
+        PurchaseOrder order = waitingDriverOrder();
+        when(driverProfileMapper.selectOne(any())).thenReturn(driverProfile());
+        when(purchaseOrderMapper.selectById("PO-TRANSPORT-001")).thenReturn(order);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), eq("1"), any(Duration.class))).thenReturn(true);
+        when(redisTemplate.execute(any(), anyList(), any(), any())).thenReturn(0L);
+        when(orderAcceptanceMapper.selectOne(any())).thenReturn(null);
+        when(orderPaymentMapper.selectOne(any())).thenReturn(null);
+
+        var view = service.claimTransportOrder(8L, "PO-TRANSPORT-001");
+
+        verify(purchaseOrderMapper, never()).update(any(PurchaseOrder.class), any());
+        verify(rabbitTemplate).convertAndSend(
+                eq(OrderRabbitConfig.ORDER_EXCHANGE),
+                eq(OrderRabbitConfig.ORDER_CLAIMED_ROUTING_KEY),
+                eq("transport:PO-TRANSPORT-001:8")
+        );
+        assertThat(view.status()).isEqualTo("司机已接单");
+        assertThat(view.driverId()).isEqualTo(8L);
+    }
+
+    @Test
+    void supplierCanConfirmPanicBuyClaimedOrder() {
+        BusinessDemoService service = service();
+        PurchaseOrder order = purchaserClaimedOrder();
+        when(purchaseOrderMapper.selectById("PO-PANIC-001")).thenReturn(order);
+        when(supplierMaterialMapper.update(any(), any())).thenReturn(1);
+        when(purchaseOrderMapper.update(any(PurchaseOrder.class), any())).thenReturn(1);
+        when(driverFollowMapper.selectList(any())).thenReturn(List.of());
+
+        var view = service.confirmSupplierOrder(1L, "PO-PANIC-001");
+
+        assertThat(view.status()).isEqualTo("待司机接单");
+        verify(orderTimelineMapper).insert(any(com.material.auth.entity.OrderTimeline.class));
+    }
+
+    @Test
     void purchaserRfqQuotesAreSortedByPriceDeliveryAndSupplierRating() {
         BusinessDemoService service = service();
         PurchaseRfq rfq = rfq();
@@ -242,6 +314,53 @@ class BusinessDemoServicePersistenceTest {
         assertThat(quotes).extracting("supplierName").containsExactly("B 优选供应商", "A 高价供应商");
         assertThat(quotes.get(0).unitPrice()).isEqualByComparingTo("820.00");
         assertThat(quotes.get(0).recommendScore()).isGreaterThan(quotes.get(1).recommendScore());
+    }
+
+    @Test
+    void fulfillmentRankingsReturnPurchasersSuppliersAndDrivers() {
+        BusinessDemoService service = service();
+        SupplierProfile supplier = supplierProfile();
+        PurchaserProfile purchaser = purchaserProfile();
+        DriverProfile driver = driverProfile();
+        when(supplierProfileMapper.selectList(any())).thenReturn(List.of(supplier));
+        when(purchaserProfileMapper.selectList(any())).thenReturn(List.of(purchaser));
+        when(driverProfileMapper.selectList(any())).thenReturn(List.of(driver));
+        when(orderReviewMapper.selectList(any())).thenReturn(List.of(
+                review("PURCHASER", 1L, 5),
+                review("DRIVER", 8L, 4)
+        ));
+
+        var rankings = service.fulfillmentRankings();
+
+        assertThat(rankings.purchasers()).extracting("displayName").containsExactly("Shanghai Material Purchaser Co., Ltd.");
+        assertThat(rankings.purchasers()).extracting("ratingScore").containsExactly("5");
+        assertThat(rankings.suppliers()).extracting("displayName").containsExactly("Shanghai Reliable Supplier Co., Ltd.");
+        assertThat(rankings.drivers()).extracting("displayName").containsExactly("李师傅 · 沪A-8899");
+    }
+
+    @Test
+    void dispatchRecommendationsRankOnlineNearbyDriversWithReasons() {
+        BusinessDemoService service = service();
+        PurchaseOrder order = waitingDriverOrder();
+        order.setOriginAddress("上海市浦东新区临港物资园");
+        order.setOriginLongitude(new BigDecimal("121.510000"));
+        order.setOriginLatitude(new BigDecimal("31.230000"));
+        order.setDestinationAddress("上海市徐汇区应急采购中心");
+        order.setDestinationLongitude(new BigDecimal("121.430000"));
+        order.setDestinationLatitude(new BigDecimal("31.180000"));
+        DriverProfile nearbyOnline = driverProfile(8L, "李师傅", "沪A-8899", "121.512000", "31.231000", 1, "4.70");
+        DriverProfile farOnline = driverProfile(9L, "王师傅", "苏A-E7601", "121.120000", "31.030000", 1, "4.90");
+        DriverProfile nearbyOffline = driverProfile(10L, "陈师傅", "沪B-1001", "121.513000", "31.231500", 0, "5.00");
+        when(purchaseOrderMapper.selectById("PO-TRANSPORT-001")).thenReturn(order);
+        when(driverProfileMapper.selectList(any())).thenReturn(List.of(farOnline, nearbyOffline, nearbyOnline));
+
+        var recommendations = service.dispatchRecommendations(1L, "SUPPLIER", "PO-TRANSPORT-001");
+
+        assertThat(recommendations).hasSize(3);
+        assertThat(recommendations).extracting("driverId").containsExactly(8L, 9L, 10L);
+        assertThat(recommendations.get(0).online()).isTrue();
+        assertThat(recommendations.get(0).distanceToOriginKm()).isLessThan(new BigDecimal("1.00"));
+        assertThat(recommendations.get(0).reason()).contains("在线").contains("距发货地");
     }
 
     @Test
@@ -341,6 +460,37 @@ class BusinessDemoServicePersistenceTest {
         assertThat(auditView.auditStatus()).isEqualTo("待复核");
         assertThat(auditView.qualificationCompletion()).isEqualTo(86);
         assertThat(auditView.riskTags()).contains("缺少安全生产证明", "暂无上架物资");
+    }
+
+    @Test
+    void supplierQualificationReGeocodesWhenAddressChangesWithOldCoordinates() {
+        BusinessDemoService service = service();
+        SupplierProfile supplier = supplierProfile();
+        supplier.setAddress("江苏省南京市");
+        supplier.setLongitude(new BigDecimal("118.840000"));
+        supplier.setLatitude(new BigDecimal("31.950000"));
+        when(supplierProfileMapper.selectOne(any())).thenReturn(supplier);
+        when(supplierMaterialMapper.selectList(any())).thenReturn(List.of());
+        when(geocodingService.resolve("山东省济南市"))
+                .thenReturn(Optional.of(new Coordinates(new BigDecimal("117.120000"), new BigDecimal("36.650000"))));
+
+        var view = service.updateSupplierQualification(1L, new SupplierQualificationRequest(
+                "上海可靠应急供应链有限公司",
+                "张经理",
+                "13800000001",
+                "LIC-UPDATED-0001",
+                "山东省济南市",
+                new BigDecimal("118.840000"),
+                new BigDecimal("31.950000"),
+                "",
+                "",
+                ""
+        ));
+
+        assertThat(view.address()).isEqualTo("山东省济南市");
+        assertThat(view.longitude()).isEqualByComparingTo("117.120000");
+        assertThat(view.latitude()).isEqualByComparingTo("36.650000");
+        verify(geocodingService).resolve("山东省济南市");
     }
 
     @Test
@@ -501,6 +651,20 @@ class BusinessDemoServicePersistenceTest {
         return quote;
     }
 
+    private OrderReview review(String targetType, Long targetId, Integer score) {
+        OrderReview review = new OrderReview();
+        review.setOrderId("PO-REVIEW-001");
+        review.setReviewerType("PURCHASER");
+        review.setReviewerId(1L);
+        review.setTargetType(targetType);
+        review.setTargetId(targetId);
+        review.setScore(score);
+        review.setContent("履约稳定");
+        review.setCreateTime(java.time.LocalDateTime.now());
+        review.setUpdateTime(review.getCreateTime());
+        return review;
+    }
+
     private PurchaseOrder completedOrder() {
         PurchaseOrder order = new PurchaseOrder();
         order.setId("PO-ACCEPT-001");
@@ -517,6 +681,44 @@ class BusinessDemoServicePersistenceTest {
         order.setSource("询价报价已采纳");
         order.setPushedTo("订单已完成，等待采购方验收");
         order.setDriverId(8L);
+        order.setCreateTime(java.time.LocalDateTime.now());
+        return order;
+    }
+
+    private PurchaseOrder waitingDriverOrder() {
+        PurchaseOrder order = new PurchaseOrder();
+        order.setId("PO-TRANSPORT-001");
+        order.setPurchaserId(1L);
+        order.setPurchaserName("Shanghai Material Purchaser Co., Ltd.");
+        order.setSupplierId(1L);
+        order.setSupplierName("Shanghai Reliable Supplier Co., Ltd.");
+        order.setMaterialId(101L);
+        order.setMaterialName("瓶装饮用水");
+        order.setCategory("食品饮水");
+        order.setQuantity("80 箱");
+        order.setAmount("3184.00");
+        order.setStatus("待司机接单");
+        order.setSource("供应商确认后进入待分配运力订单池");
+        order.setPushedTo("供应商已确认，订单进入运输大厅并推送给关注关系司机");
+        order.setCreateTime(java.time.LocalDateTime.now());
+        return order;
+    }
+
+    private PurchaseOrder purchaserClaimedOrder() {
+        PurchaseOrder order = new PurchaseOrder();
+        order.setId("PO-PANIC-001");
+        order.setPurchaserId(20L);
+        order.setPurchaserName("压测采购方 perf_purchaser_0005");
+        order.setSupplierId(1L);
+        order.setSupplierName("Shanghai Reliable Supplier Co., Ltd.");
+        order.setMaterialId(101L);
+        order.setMaterialName("P.O42.5 散装水泥");
+        order.setCategory("水泥");
+        order.setQuantity("1000 吨");
+        order.setAmount("¥ 500000");
+        order.setStatus("采购方已抢购");
+        order.setSource("JMeter 高并发抢购压测");
+        order.setPushedTo("采购方 20 已抢购成功，等待供应商确认");
         order.setCreateTime(java.time.LocalDateTime.now());
         return order;
     }
@@ -560,6 +762,8 @@ class BusinessDemoServicePersistenceTest {
         profile.setCompanyName("Shanghai Reliable Supplier Co., Ltd.");
         profile.setContactName("张经理");
         profile.setAddress("上海市浦东新区临港物资园");
+        profile.setLongitude(new BigDecimal("121.510000"));
+        profile.setLatitude(new BigDecimal("31.230000"));
         profile.setRatingScore(new BigDecimal("96.8"));
         return profile;
     }
@@ -605,6 +809,32 @@ class BusinessDemoServicePersistenceTest {
         PurchaserProfile profile = new PurchaserProfile();
         profile.setPurchaserId(1L);
         profile.setCompanyName("Shanghai Material Purchaser Co., Ltd.");
+        profile.setAddress("上海市徐汇区应急采购中心");
+        profile.setLongitude(new BigDecimal("121.430000"));
+        profile.setLatitude(new BigDecimal("31.180000"));
+        return profile;
+    }
+
+    private com.material.auth.entity.DriverProfile driverProfile() {
+        return driverProfile(8L, "李师傅", "沪A-8899", "121.480000", "31.230000", 1, "4.70");
+    }
+
+    private com.material.auth.entity.DriverProfile driverProfile(Long driverId,
+                                                                 String realName,
+                                                                 String vehicleNo,
+                                                                 String longitude,
+                                                                 String latitude,
+                                                                 Integer attendanceStatus,
+                                                                 String ratingScore) {
+        com.material.auth.entity.DriverProfile profile = new com.material.auth.entity.DriverProfile();
+        profile.setDriverId(driverId);
+        profile.setRealName(realName);
+        profile.setVehicleNo(vehicleNo);
+        profile.setVehicleType("4.2米厢式货车");
+        profile.setLongitude(new BigDecimal(longitude));
+        profile.setLatitude(new BigDecimal(latitude));
+        profile.setAttendanceStatus(attendanceStatus);
+        profile.setRatingScore(new BigDecimal(ratingScore));
         return profile;
     }
 }

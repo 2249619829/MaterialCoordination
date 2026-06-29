@@ -1,5 +1,6 @@
 package com.material.auth.controller;
 
+import com.material.auth.dto.business.DispatchRecommendationView;
 import com.material.auth.dto.business.PurchaseOrderView;
 import com.material.auth.service.impl.BusinessDemoService;
 import com.material.common.constant.AuthConstants;
@@ -7,8 +8,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -51,7 +56,13 @@ class BusinessDemoControllerTest {
                 "待付款",
                 "验收完成后由采购方登记付款凭证",
                 "",
-                ""
+                "",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         ));
 
         mockMvc.perform(post("/api/transport-orders/{orderId}/claim", orderId)
@@ -61,5 +72,33 @@ class BusinessDemoControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(orderId))
                 .andExpect(jsonPath("$.data.status").value("司机已接单"));
+    }
+
+    @Test
+    void orderDispatchRecommendationsUseOrderPathVariableAndCurrentUser() throws Exception {
+        String orderId = "PO-20260611-1001";
+        when(businessDemoService.dispatchRecommendations(7L, "SUPPLIER", orderId)).thenReturn(List.of(
+                new DispatchRecommendationView(
+                        8L,
+                        "李师傅",
+                        "沪A-8899",
+                        "4.2米厢式货车",
+                        true,
+                        new BigDecimal("0.21"),
+                        "4.7",
+                        new BigDecimal("166.79"),
+                        "在线 · 距发货地 0.21 KM · 评分 4.7",
+                        1
+                )
+        ));
+
+        mockMvc.perform(get("/api/orders/{orderId}/dispatch-recommendations", orderId)
+                        .header(AuthConstants.HEADER_USER_ID, 7L)
+                        .header(AuthConstants.HEADER_USER_TYPE, "SUPPLIER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].driverId").value(8L))
+                .andExpect(jsonPath("$.data[0].online").value(true))
+                .andExpect(jsonPath("$.data[0].reason").value("在线 · 距发货地 0.21 KM · 评分 4.7"));
     }
 }

@@ -1,6 +1,8 @@
 package com.material.auth.controller;
 
 import com.material.auth.dto.business.DriverFollowView;
+import com.material.auth.dto.business.DispatchRecommendationView;
+import com.material.auth.dto.business.FulfillmentRankingsView;
 import com.material.auth.dto.business.FollowRequest;
 import com.material.auth.dto.business.AdminDashboardView;
 import com.material.auth.dto.business.AdminSupplierAuditView;
@@ -28,6 +30,7 @@ import com.material.auth.dto.business.SupplierQualificationRequest;
 import com.material.auth.dto.business.SupplierQualificationView;
 import com.material.auth.dto.business.SupplierRankingView;
 import com.material.auth.dto.business.SupplierStoreView;
+import com.material.auth.dto.business.TransportTrackingView;
 import com.material.auth.security.AuthUserContext;
 import com.material.auth.service.impl.BusinessDemoService;
 import com.material.common.constant.AuthConstants;
@@ -101,6 +104,11 @@ public class BusinessDemoController {
     @GetMapping("/suppliers/ranking")
     public Result<List<SupplierRankingView>> supplierRanking() {
         return Result.success(businessDemoService.supplierRanking());
+    }
+
+    @GetMapping("/rankings/fulfillment")
+    public Result<FulfillmentRankingsView> fulfillmentRankings() {
+        return Result.success(businessDemoService.fulfillmentRankings());
     }
 
     /**
@@ -393,6 +401,24 @@ public class BusinessDemoController {
                                                          @PathVariable("orderId") String orderId) {
         AuthUserContext user = currentUser(userId, userType, username);
         return Result.success(businessDemoService.orderTimeline(user.userId(), user.userType(), orderId));
+    }
+
+    @GetMapping("/transport-orders/{orderId}/tracking")
+    public Result<TransportTrackingView> transportTracking(@RequestHeader(AuthConstants.HEADER_USER_ID) Long userId,
+                                                           @RequestHeader(AuthConstants.HEADER_USER_TYPE) String userType,
+                                                           @RequestHeader(value = AuthConstants.HEADER_USERNAME, required = false) String username,
+                                                           @PathVariable("orderId") String orderId) {
+        AuthUserContext user = currentUser(userId, userType, username);
+        return Result.success(businessDemoService.transportTracking(user.userId(), user.userType(), orderId));
+    }
+
+    @GetMapping("/orders/{orderId}/dispatch-recommendations")
+    public Result<List<DispatchRecommendationView>> dispatchRecommendations(@RequestHeader(AuthConstants.HEADER_USER_ID) Long userId,
+                                                                            @RequestHeader(AuthConstants.HEADER_USER_TYPE) String userType,
+                                                                            @RequestHeader(value = AuthConstants.HEADER_USERNAME, required = false) String username,
+                                                                            @PathVariable("orderId") String orderId) {
+        AuthUserContext user = currentUser(userId, userType, username);
+        return Result.success(businessDemoService.dispatchRecommendations(user.userId(), user.userType(), orderId));
     }
 
     /**
