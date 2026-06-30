@@ -56,6 +56,7 @@ export const state = {
   reviewModal: null,
   acceptanceModal: null,
   paymentModal: null,
+  trackingModal: null,
   timelineModal: null,
   authMode: "login",
   authError: "",

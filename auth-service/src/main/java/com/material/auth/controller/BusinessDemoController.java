@@ -30,6 +30,8 @@ import com.material.auth.dto.business.SupplierQualificationRequest;
 import com.material.auth.dto.business.SupplierQualificationView;
 import com.material.auth.dto.business.SupplierRankingView;
 import com.material.auth.dto.business.SupplierStoreView;
+import com.material.auth.dto.business.TransportLocationReportRequest;
+import com.material.auth.dto.business.TransportLocationReportView;
 import com.material.auth.dto.business.TransportTrackingView;
 import com.material.auth.security.AuthUserContext;
 import com.material.auth.service.impl.BusinessDemoService;
@@ -410,6 +412,16 @@ public class BusinessDemoController {
                                                            @PathVariable("orderId") String orderId) {
         AuthUserContext user = currentUser(userId, userType, username);
         return Result.success(businessDemoService.transportTracking(user.userId(), user.userType(), orderId));
+    }
+
+    @PostMapping("/transport-orders/{orderId}/location")
+    public Result<TransportLocationReportView> reportTransportLocation(@RequestHeader(AuthConstants.HEADER_USER_ID) Long userId,
+                                                                       @RequestHeader(AuthConstants.HEADER_USER_TYPE) String userType,
+                                                                       @RequestHeader(value = AuthConstants.HEADER_USERNAME, required = false) String username,
+                                                                       @PathVariable("orderId") String orderId,
+                                                                       @RequestBody TransportLocationReportRequest request) {
+        AuthUserContext user = currentUser(userId, userType, username);
+        return Result.success(businessDemoService.reportTransportLocation(user.requireRole(AuthUserContext.DRIVER), orderId, request));
     }
 
     @GetMapping("/orders/{orderId}/dispatch-recommendations")

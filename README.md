@@ -32,10 +32,10 @@
 - 高并发抢购：Redis + Lua 原子扣减名额，RabbitMQ 异步落库，Redisson 锁兜底。
 - 高并发运力抢单：司机抢运输单先由 Redis Lua 原子预占，再通过 RabbitMQ 异步绑定司机，避免重复接单。
 - 订单推拉结合：订单创建后按关注关系推送给司机；司机也可在待分配运输订单池主动拉取。
-- 物流位置建模：订单记录发货地、目的地和经纬度，支持运输追踪接口聚合状态时间线。
+- 物流位置建模：订单记录发货地、目的地和经纬度，司机可上传到达节点，运输追踪接口聚合起终点、司机节点和状态时间线。
 - 智能调度推荐：待司机接单订单按司机在线状态、距发货地距离和司机评分生成可解释推荐榜。
 - 消息通知中心：按采购方、供应商、司机角色聚合订单、推送和 MQ 异常提醒。
-- Redis 数据结构：ZSet 做高频供应商履约榜，订单评价沉淀采购方/供应商/司机三方榜，GEO 查询附近供应商，BitMap 记录司机出勤。
+- Redis 数据结构：ZSet 做高频供应商履约榜，订单评价沉淀采购方/供应商/司机三方榜，GEO 查询附近供应商并缓存司机/订单最新位置，BitMap 记录司机出勤。
 - RabbitMQ 可靠性：订单创建/抢购消息异步处理，死信队列统计，推送补偿接口兜底。
 - 三方评价：采购方、供应商、司机围绕订单做履约评价，三类角色首页都能看到采购方、供应商、司机三张履约榜。
 
@@ -168,6 +168,7 @@ scripts/start-openresty.sh
 - 推送已读：`POST /api/transport-orders/push/{orderId}/read`
 - 司机抢运输单：`POST /api/transport-orders/{orderId}/claim`
 - 司机开始运输：`POST /api/transport-orders/{orderId}/start`
+- 司机上传到达节点：`POST /api/transport-orders/{orderId}/location`
 - 司机完成运输：`POST /api/transport-orders/{orderId}/complete`
 - 运输追踪：`GET /api/transport-orders/{orderId}/tracking`
 - 智能调度推荐：`GET /api/orders/{orderId}/dispatch-recommendations`
@@ -181,6 +182,8 @@ scripts/start-openresty.sh
 ## 架构文档
 
 详细架构、流程图和面试讲解话术见：[docs/architecture.md](docs/architecture.md)。
+
+代码结构、接口覆盖和功能完成状态见：[docs/project-code-guide.md](docs/project-code-guide.md)。
 
 接口清单见：[docs/api.md](docs/api.md)。
 

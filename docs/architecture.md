@@ -38,16 +38,16 @@ flowchart LR
 - 采购订单创建、供应商确认/拒单、库存扣减、订单时间线。
 - 高并发采购方抢购限量应急物资。
 - 司机待分配订单池、订单推送和高并发运力抢单。
-- 运输订单发货地/目的地经纬度、智能调度推荐和追踪聚合。
+- 运输订单发货地/目的地经纬度、司机到达节点上报、智能调度推荐和追踪聚合。
 - 三方履约评价。
 - Redis GEO、BitMap、ZSet 扩展能力。
 - RabbitMQ 消费、死信队列统计和补偿接口。
 
 ### web-frontend
 
-- 采购方页面：供应商大厅、搜索筛选、店铺详情、采购清单、通知中心、采购订单。
-- 供应商页面：供货工作台、供应物资管理、供货订单、资质展示。
-- 司机页面：运输大厅、推送订单、通知中心、出勤状态、关注采购方。
+- 采购方页面：供应商大厅、搜索筛选、店铺详情、采购清单、通知中心、采购订单、运输追踪。
+- 供应商页面：供货工作台、供应物资管理、供货订单、资质展示、运输追踪。
+- 司机页面：运输大厅、推送订单、通知中心、出勤状态、关注采购方、到达节点上报、运输追踪。
 
 ## 核心流程
 
@@ -138,6 +138,33 @@ flowchart LR
 面试讲法：
 
 > 订单状态不是简单字段展示，而是由服务端状态机推进。供应商确认时通过条件更新扣减库存，司机只能接待司机接单状态的订单，接单后继续推进运输中和已完成。每一次状态变化都会写入 `order_timeline`，前端可以展示完整操作轨迹，便于追踪和排查。
+
+### 运输追踪与司机位置上报
+
+```mermaid
+sequenceDiagram
+    participant D as 司机浏览器
+    participant FE as web-frontend
+    participant S as AuthService
+    participant DB as MySQL
+    participant R as Redis GEO
+    participant U as 订单参与方
+
+    D->>FE: 点击到达节点
+    FE->>FE: navigator.geolocation 获取经纬度
+    FE->>S: POST /api/transport-orders/{orderId}/location
+    S->>S: 校验承运司机和订单状态
+    S->>DB: 写入 transport_location_report
+    S->>DB: 写入 order_timeline
+    S->>R: 更新 driver:location:geo / transport:order:location:geo
+    U->>S: GET /api/transport-orders/{orderId}/tracking
+    S->>DB: 读取起终点、上传节点和时间线
+    S-->>U: 返回 tracking 聚合视图
+```
+
+面试讲法：
+
+> 运输追踪不是从时间线备注里硬解析坐标，而是单独建了 `transport_location_report` 保存司机上传节点。司机点击“到达节点”后，浏览器定位拿到经纬度，后端校验司机确实承运该订单，并且订单处于可上报阶段。MySQL 保存完整历史，Redis GEO 只保存司机和订单最新位置，用于后续扩展附近查询或实时看板。前端展示的是路线节点、司机上传节点和时间线，没有伪装成地图导航。
 
 ### 采购版美团工作台
 
@@ -231,13 +258,15 @@ flowchart TD
 flowchart LR
     Z["ZSet\nranking:supplier:fulfillment"] --> Z1["供应商履约排行榜"]
     G["GEO\ngeo:supplier"] --> G1["应急地点附近供应商"]
+    L["GEO\ndriver:location:geo"] --> L1["司机最新位置"]
+    O["GEO\ntransport:order:location:geo"] --> O1["订单最新位置"]
     B["BitMap\nattendance:driver:yyyyMMdd"] --> B1["司机今日出勤状态"]
     D["DB + Geo Formula\n司机坐标/评分/在线状态"] --> D1["智能调度推荐"]
 ```
 
 面试讲法：
 
-> Redis 不只是缓存。ZSet 用于高频供应商排行榜，GEO 用于附近供应商调度，BitMap 用于海量司机签到状态。待司机接单订单会结合司机在线状态、距发货地距离和司机评分做智能调度推荐。三方履约榜由订单评价沉淀，这样既能体现业务建模，也能体现对 Redis 数据结构和调度模型的理解。
+> Redis 不只是缓存。ZSet 用于高频供应商排行榜，GEO 用于附近供应商调度，也用于保存司机和订单最新位置，BitMap 用于海量司机签到状态。待司机接单订单会结合司机在线状态、距发货地距离和司机评分做智能调度推荐。司机上传位置的历史仍以 MySQL 为准，Redis GEO 只承担最新位置索引，这样既能体现业务建模，也能体现对 Redis 数据结构和调度模型的理解。
 
 ### MQ 死信与补偿
 
@@ -266,6 +295,7 @@ flowchart TD
 - `driver_follow`：司机和采购方关注关系。
 - `order_push_record`：订单推送记录。
 - `order_review`：订单履约评价。
+- `transport_location_report`：司机上传到达节点历史，记录订单、司机、经纬度、备注和上传时间。
 
 ## 本地中间件
 
@@ -285,9 +315,10 @@ flowchart TD
 7. 高并发司机抢单：Redis Lua 预占运力名额，RabbitMQ 异步绑定司机，MySQL 状态机兜底。
 8. 推拉结合：推送记录给关注关系司机，司机也可以主动拉取待分配运输订单池。
 9. 智能调度推荐：按在线状态、发货地距离和司机评分给待接单订单推荐运力。
-10. Redis 扩展：ZSet 排行榜、GEO 附近供应商、BitMap 司机出勤。
-11. 可靠性：RabbitMQ 死信队列、异常观测、补偿接口。
-12. 前端展示：三角色页面不同，能直观看到业务隔离和核心链路。
+10. 运输追踪：起终点建模、司机上传节点、MySQL 历史、Redis GEO 最新位置。
+11. Redis 扩展：ZSet 排行榜、GEO 附近供应商和最新位置、BitMap 司机出勤。
+12. 可靠性：RabbitMQ 死信队列、异常观测、补偿接口。
+13. 前端展示：三角色页面不同，能直观看到业务隔离和核心链路。
 
 ## 可以继续增强的点
 

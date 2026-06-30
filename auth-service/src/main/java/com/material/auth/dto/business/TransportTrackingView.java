@@ -13,6 +13,7 @@ public record TransportTrackingView(
         String destinationAddress,
         BigDecimal destinationLongitude,
         BigDecimal destinationLatitude,
+        List<TransportLocationReportView> locationReports,
         List<OrderTimelineView> timeline
 ) {
 }

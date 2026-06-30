@@ -62,9 +62,9 @@ globalThis.FormData = class TestFormData {
 
 const { state } = await import("./js/state.js");
 const { savedLoginStorageKey, sessionTokenStorageKey, sessionUserStorageKey } = await import("./js/config.js");
-const { appTemplate } = await import("./js/views.js");
+const { appTemplate, loginTemplate } = await import("./js/views.js");
 const appModule = await import("./app.js");
-const { handleRegister, selectPage } = appModule;
+const { handleRegister, openTrackingModal, scrollRankingList, selectPage, uploadTransportLocation } = appModule;
 
 test("driver registration remembers the new driver credentials for the next login", async () => {
   storage.clear();
@@ -122,6 +122,234 @@ test("page navigation closes the notification center", () => {
   assert.equal(state.showNotifications, false);
 });
 
+test("login screen presents the emergency logistics start experience", () => {
+  state.user = null;
+  state.authMode = "login";
+  state.savedLogin = null;
+  state.authError = "";
+  state.loginLoading = false;
+
+  const html = loginTemplate();
+
+  assert.match(html, /应急物资从采购到运输，一屏协同/);
+  assert.match(html, /class="hero-map-card"/);
+  assert.match(html, /运输追踪/);
+  assert.match(html, /PO-BULK-00025736/);
+  assert.match(html, /supplier01/);
+  assert.match(html, /driver01/);
+});
+
+test("ranking scroll control moves the internal ranking window", () => {
+  const originalQuerySelector = document.querySelector;
+  const rankingWindow = {
+    clientHeight: 240,
+    scrollHeight: 760,
+    scrollTop: 0,
+    scrollTo({ top }) {
+      this.scrollTop = top;
+    },
+  };
+  document.querySelector = (selector) => (selector === '[data-ranking-window="drivers"]' ? rankingWindow : null);
+
+  try {
+    scrollRankingList("drivers");
+    assert.equal(rankingWindow.scrollTop, 240);
+
+    rankingWindow.scrollTop = 520;
+    scrollRankingList("drivers");
+    assert.equal(rankingWindow.scrollTop, 0);
+  } finally {
+    document.querySelector = originalQuerySelector;
+  }
+});
+
+test("order cards expose a transport tracking action", () => {
+  state.user = { id: 1, userType: "DRIVER", username: "driver01", displayName: "司机" };
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.fulfillmentRankings = { purchasers: [], suppliers: [], drivers: [] };
+  state.dispatchRecommendations = { orderId: null, items: [] };
+  state.transportHall = [];
+  state.pushOrders = [];
+  state.follows = [];
+  state.attendance = { online: true, date: "2026-06-30" };
+  state.driverOrders = [{
+    id: "PO-TRACK-001",
+    purchaserName: "上海应急采购中心",
+    supplierName: "上海可靠供应商",
+    materialName: "净水设备",
+    category: "净水",
+    quantity: "20 台",
+    amount: "20000",
+    status: "司机已接单",
+    source: "供应商确认供货",
+    pushedTo: "司机 1 已抢单",
+    originAddress: "上海供应商仓库",
+    originLongitude: "121.0736",
+    originLatitude: "31.0736",
+    destinationAddress: "上海应急采购中心",
+    destinationLongitude: "121.4700",
+    destinationLatitude: "31.2300",
+  }];
+
+  const html = appTemplate();
+
+  assert.match(html, /data-order-tracking="PO-TRACK-001"/);
+  assert.match(html, /运输追踪/);
+});
+
+test("openTrackingModal loads tracking data and renders route nodes with timeline", async () => {
+  assert.equal(typeof openTrackingModal, "function");
+  state.user = { id: 1, userType: "DRIVER", username: "driver01", displayName: "司机" };
+  state.token = "driver-token";
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.fulfillmentRankings = { purchasers: [], suppliers: [], drivers: [] };
+  state.dispatchRecommendations = { orderId: null, items: [] };
+  state.transportHall = [];
+  state.pushOrders = [];
+  state.follows = [];
+  state.attendance = { online: true, date: "2026-06-30" };
+  state.driverOrders = [{
+    id: "PO-TRACK-001",
+    purchaserName: "上海应急采购中心",
+    supplierName: "上海可靠供应商",
+    materialName: "净水设备",
+    category: "净水",
+    quantity: "20 台",
+    amount: "20000",
+    status: "司机已接单",
+    source: "供应商确认供货",
+    pushedTo: "司机 1 已抢单",
+  }];
+
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/api/transport-orders/PO-TRACK-001/tracking")) {
+      return jsonResponse({
+        orderId: "PO-TRACK-001",
+        status: "司机已接单",
+        driverId: 1,
+        originAddress: "上海供应商仓库",
+        originLongitude: "121.0736",
+        originLatitude: "31.0736",
+        destinationAddress: "上海应急采购中心",
+        destinationLongitude: "121.4700",
+        destinationLatitude: "31.2300",
+        locationReports: [{
+          id: 7,
+          orderId: "PO-TRACK-001",
+          driverId: 1,
+          longitude: "121.473701",
+          latitude: "31.230416",
+          remark: "到达中转点",
+          createdAt: "2026-06-30 15:40",
+        }],
+        timeline: [{
+          id: 1,
+          orderId: "PO-TRACK-001",
+          status: "司机已接单",
+          action: "司机抢运输单预占成功",
+          operatorType: "DRIVER",
+          operatorId: 1,
+          remark: "Redis Lua 已完成运力名额预占",
+          createdAt: "2026-06-30 15:20",
+        }],
+      });
+    }
+    return jsonResponse([]);
+  };
+
+  await openTrackingModal("PO-TRACK-001");
+
+  assert.ok(calls.some((url) => url.endsWith("/api/transport-orders/PO-TRACK-001/tracking")));
+  assert.equal(state.trackingModal.tracking.orderId, "PO-TRACK-001");
+  const html = appTemplate();
+
+  assert.match(html, /id="trackingTitle"/);
+  assert.match(html, /运输追踪/);
+  assert.match(html, /上海供应商仓库/);
+  assert.match(html, /121\.0736/);
+  assert.match(html, /上海应急采购中心/);
+  assert.match(html, /121\.4700/);
+  assert.match(html, /司机上传节点/);
+  assert.match(html, /到达中转点/);
+  assert.match(html, /121\.473701/);
+  assert.match(html, /31\.230416/);
+  assert.match(html, /司机抢运输单预占成功/);
+});
+
+test("uploadTransportLocation uses browser geolocation and posts the driver node", async () => {
+  assert.equal(typeof uploadTransportLocation, "function");
+  const originalNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      geolocation: {
+        getCurrentPosition(resolve) {
+          resolve({
+            coords: {
+              longitude: 121.473701,
+              latitude: 31.230416,
+            },
+          });
+        },
+      },
+    },
+  });
+
+  state.user = { id: 1, userType: "DRIVER", username: "driver01", displayName: "司机" };
+  state.token = "driver-token";
+  state.page = "home";
+  state.actionLoading = {};
+  state.toast = "";
+  state.trackingModal = null;
+  state.driverOrders = [{
+    id: "PO-TRACK-001",
+    status: "运输中",
+    materialName: "净水设备",
+  }];
+
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/api/transport-orders/PO-TRACK-001/location")) {
+      return jsonResponse({
+        id: 7,
+        orderId: "PO-TRACK-001",
+        driverId: 1,
+        longitude: "121.473701",
+        latitude: "31.230416",
+        remark: "到达运输节点",
+        createdAt: "2026-06-30 15:40",
+      });
+    }
+    if (String(url).endsWith("/api/transport-orders/mine")) return jsonResponse(state.driverOrders);
+    if (String(url).endsWith("/api/drivers/attendance/today")) return jsonResponse({ online: true, date: "2026-06-30" });
+    if (String(url).endsWith("/api/rankings/fulfillment")) return jsonResponse({ purchasers: [], suppliers: [], drivers: [] });
+    return jsonResponse([]);
+  };
+
+  try {
+    await uploadTransportLocation("PO-TRACK-001");
+  } finally {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
+  }
+
+  const postCall = calls.find((call) => call.url.endsWith("/api/transport-orders/PO-TRACK-001/location"));
+  assert.ok(postCall);
+  assert.equal(postCall.options.method, "POST");
+  assert.deepEqual(JSON.parse(postCall.options.body), {
+    longitude: 121.473701,
+    latitude: 31.230416,
+    remark: "到达运输节点",
+  });
+  assert.equal(state.toast, "到达节点已上传");
+});
+
 test("notification center renders as a popover instead of leading page content", () => {
   state.user = { id: 42, userType: "DRIVER", username: "driver-new", displayName: "新司机" };
   state.page = "profile";
@@ -157,6 +385,27 @@ test("supplier home renders a persistent logout action in the topbar", () => {
 
   assert.match(topbarHtml, /data-logout/);
   assert.match(topbarHtml, /退出登录/);
+});
+
+test("topbar and profile render role identity avatars instead of plain initials", () => {
+  [
+    { userType: "PURCHASER", username: "purchaser01", displayName: "采购方", roleClass: "role-avatar--purchaser", mark: "采", label: "采购方" },
+    { userType: "SUPPLIER", username: "supplier01", displayName: "供应商", roleClass: "role-avatar--supplier", mark: "供", label: "供应商" },
+    { userType: "DRIVER", username: "driver01", displayName: "李师傅", roleClass: "role-avatar--driver", mark: "运", label: "司机" },
+    { userType: "ADMIN", username: "admin01", displayName: "管理员", roleClass: "role-avatar--admin", mark: "管", label: "平台管理员" },
+  ].forEach((user, index) => {
+    state.user = { id: index + 1, userType: user.userType, username: user.username, displayName: user.displayName };
+    state.page = "profile";
+    state.showNotifications = false;
+    state.notifications = [];
+
+    const html = appTemplate();
+
+    assert.match(html, new RegExp(user.roleClass));
+    assert.equal((html.match(new RegExp(user.roleClass, "g")) || []).length, 2);
+    assert.match(html, new RegExp(`aria-label="${user.label}身份标识"`));
+    assert.match(html, new RegExp(`<span class="role-avatar-mark">${user.mark}</span>`));
+  });
 });
 
 test("supplier home exposes panic-buy orders for confirmation and shows ranking", () => {
@@ -241,6 +490,43 @@ test("purchaser supplier and driver homes render the three rankings together", (
     assert.match(html, /Shanghai Reliable Supplier Co., Ltd./);
     assert.match(html, /李师傅 · 沪A-8899/);
   });
+});
+
+test("ranking panel renders all top ten accounts as avatar rows with internal scrolling", () => {
+  const drivers = Array.from({ length: 12 }, (_, index) => ({
+    participantId: index + 1,
+    displayName: `司机 ${index + 1}`,
+    ratingScore: (5 - index * 0.05).toFixed(2),
+    rank: index + 1,
+  }));
+  state.fulfillmentRankings = {
+    purchasers: [],
+    suppliers: [],
+    drivers,
+  };
+  state.page = "home";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.transportHall = [];
+  state.driverOrders = [];
+  state.follows = [];
+  state.attendance = { online: true, date: "2026-06-11" };
+  state.user = { id: 1, userType: "DRIVER", username: "driver01", displayName: "李师傅" };
+
+  const html = appTemplate();
+  const driverColumn = html.match(/<section class="ranking-column" data-ranking-key="drivers">[\s\S]*?<\/section>/)?.[0] ?? "";
+
+  assert.match(driverColumn, /data-ranking-window="drivers"/);
+  assert.match(driverColumn, /data-visible-count="6"/);
+  assert.match(driverColumn, /data-ranking-count="10"/);
+  assert.match(driverColumn, /data-scroll-ranking="drivers"/);
+  assert.equal((driverColumn.match(/data-ranking-entry="drivers"/g) || []).length, 10);
+  assert.equal((driverColumn.match(/class="ranking-avatar ranking-avatar--driver/g) || []).length, 10);
+  assert.match(driverColumn, /#10/);
+  assert.match(driverColumn, /司机 10/);
+  assert.doesNotMatch(driverColumn, /#11/);
+  assert.doesNotMatch(driverColumn, /#12/);
+  assert.doesNotMatch(driverColumn, /ranking-leader|ranking-crown/);
 });
 
 test("purchaser supplier and admin homes render dispatch recommendations", () => {

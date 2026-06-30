@@ -7,7 +7,7 @@ import {
   defaultAuthUsername,
   defaultReviewText,
   loginTemplate,
-} from "./js/views.js?v=20260611-dispatch-recommendations";
+} from "./js/views.js?v=20260630-start-screen";
 
 /**
  * 作用：把当前采购清单保存到浏览器本地存储。
@@ -71,6 +71,23 @@ async function applySupplierFilters(nextFilters = {}) {
     }
     render();
   }
+}
+
+/**
+ * 作用：让排行榜内部列表按当前可视高度向下滚动，到底后回到顶部。
+ * 输入：
+ * - rankingKey：榜单标识，比如 purchasers、suppliers、drivers。
+ * 输出：无显式返回值。执行后只滚动对应榜单内部窗口。
+ */
+export function scrollRankingList(rankingKey) {
+  const rankingWindow = document.querySelector(`[data-ranking-window="${rankingKey}"]`);
+  if (!rankingWindow) return;
+  const visibleHeight = rankingWindow.clientHeight || 240;
+  const maxTop = Math.max(0, rankingWindow.scrollHeight - visibleHeight);
+  const nextTop = rankingWindow.scrollTop + visibleHeight >= maxTop - 4
+    ? 0
+    : Math.min(maxTop, rankingWindow.scrollTop + visibleHeight);
+  rankingWindow.scrollTo({ top: nextTop, behavior: "smooth" });
 }
 
 /**
@@ -759,6 +776,51 @@ async function completeTransport(orderId) {
   });
 }
 
+function currentPosition() {
+  if (!globalThis.navigator?.geolocation) {
+    return Promise.reject(new Error("当前浏览器不支持定位"));
+  }
+  return new Promise((resolve, reject) => {
+    globalThis.navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000,
+    });
+  });
+}
+
+/**
+ * 作用：司机上传当前到达节点，经纬度来自浏览器定位授权。
+ * 输入：
+ * - orderId：订单编号，用来绑定位置上报记录。
+ * 输出：返回 Promise；成功后会刷新司机订单和已打开的运输追踪弹窗。
+ */
+export async function uploadTransportLocation(orderId) {
+  await runAction(`report-location:${orderId}`, async () => {
+    try {
+      const position = await currentPosition();
+      const longitude = Number(position.coords.longitude);
+      const latitude = Number(position.coords.latitude);
+      await requestJson(`/api/transport-orders/${orderId}/location`, {
+        method: "POST",
+        body: JSON.stringify({
+          longitude,
+          latitude,
+          remark: "到达运输节点",
+        }),
+      });
+      const refreshTracking = state.trackingModal?.order?.id === orderId || state.trackingModal?.tracking?.orderId === orderId;
+      await loadRoleData();
+      if (refreshTracking) {
+        await openTrackingModal(orderId);
+      }
+      showToast("到达节点已上传");
+    } catch (error) {
+      showToast(error.message || "定位授权失败，请允许浏览器访问位置");
+    }
+  });
+}
+
 /**
  * 作用：司机关注一个采购方。
  * 输入：
@@ -1155,6 +1217,24 @@ async function openTimelineModal(orderId) {
 }
 
 /**
+ * 作用：打开运输追踪弹窗并加载起终点和时间线数据。
+ * 输入：
+ * - orderId：订单编号，用来找到要追踪的订单。
+ * 输出：返回 Promise；等异步操作完成后，页面会展示运输追踪弹窗。
+ */
+export async function openTrackingModal(orderId) {
+  const order = allKnownOrders().find((item) => item.id === orderId);
+  if (!order) return;
+  try {
+    const tracking = await requestJson(`/api/transport-orders/${orderId}/tracking`);
+    state.trackingModal = { order, tracking };
+    render();
+  } catch (error) {
+    showToast(error.message || "运输追踪加载失败");
+  }
+}
+
+/**
  * 作用：关闭订单评价弹窗。
  * 输入：
  * - 无输入参数。
@@ -1184,6 +1264,17 @@ function closeAcceptanceModal() {
  */
 function closePaymentModal() {
   state.paymentModal = null;
+  render();
+}
+
+/**
+ * 作用：关闭运输追踪弹窗。
+ * 输入：
+ * - 无输入参数。
+ * 输出：无显式返回值。执行后，运输追踪弹窗会关闭。
+ */
+function closeTrackingModal() {
+  state.trackingModal = null;
   render();
 }
 
@@ -1440,6 +1531,9 @@ function bindEvents() {
   document.querySelectorAll("[data-complete-transport]").forEach((element) => {
     element.addEventListener("click", () => completeTransport(element.dataset.completeTransport));
   });
+  document.querySelectorAll("[data-report-location]").forEach((element) => {
+    element.addEventListener("click", () => uploadTransportLocation(element.dataset.reportLocation));
+  });
   document.querySelectorAll("[data-follow-purchaser]").forEach((element) => {
     element.addEventListener("click", () => followPurchaser(Number(element.dataset.followPurchaser)));
   });
@@ -1458,6 +1552,9 @@ function bindEvents() {
   document.querySelectorAll("[data-pay-order]").forEach((element) => {
     element.addEventListener("click", () => openPaymentModal(element.dataset.payOrder));
   });
+  document.querySelectorAll("[data-order-tracking]").forEach((element) => {
+    element.addEventListener("click", () => openTrackingModal(element.dataset.orderTracking));
+  });
   document.querySelectorAll("[data-order-timeline]").forEach((element) => {
     element.addEventListener("click", () => openTimelineModal(element.dataset.orderTimeline));
   });
@@ -1469,6 +1566,9 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-retry-push]").forEach((element) => {
     element.addEventListener("click", retryPushRecords);
+  });
+  document.querySelectorAll("[data-scroll-ranking]").forEach((element) => {
+    element.addEventListener("click", () => scrollRankingList(element.dataset.scrollRanking));
   });
   document.querySelectorAll("[data-admin-approve-supplier]").forEach((element) => {
     element.addEventListener("click", () => approveSupplier(Number(element.dataset.adminApproveSupplier)));
@@ -1501,6 +1601,11 @@ function bindEvents() {
   document.querySelectorAll("[data-close-payment]").forEach((element) => {
     element.addEventListener("click", (event) => {
       if (event.target === element) closePaymentModal();
+    });
+  });
+  document.querySelectorAll("[data-close-tracking]").forEach((element) => {
+    element.addEventListener("click", (event) => {
+      if (event.target === element) closeTrackingModal();
     });
   });
   document.querySelectorAll("[data-close-timeline]").forEach((element) => {

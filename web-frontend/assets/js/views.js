@@ -13,6 +13,52 @@ import {
   unreadNotificationCount,
 } from "./selectors.js";
 
+const identityAvatarMeta = {
+  PURCHASER: { className: "purchaser", label: "采购方", mark: "采", cue: "需" },
+  SUPPLIER: { className: "supplier", label: "供应商", mark: "供", cue: "仓" },
+  DRIVER: { className: "driver", label: "司机", mark: "运", cue: "车" },
+  ADMIN: { className: "admin", label: "平台管理员", mark: "管", cue: "控" },
+};
+
+const roleOpsMeta = {
+  PURCHASER: {
+    scope: "采购调度席",
+    primary: "供应商大厅",
+    secondary: "采购清单 / RFQ",
+    live: "需求在线",
+  },
+  SUPPLIER: {
+    scope: "供货调度席",
+    primary: "物资库存",
+    secondary: "订单确认 / 报价",
+    live: "仓配在线",
+  },
+  DRIVER: {
+    scope: "运力调度席",
+    primary: "运输大厅",
+    secondary: "抢单 / 在途",
+    live: "运力在线",
+  },
+  ADMIN: {
+    scope: "运营控制席",
+    primary: "平台大盘",
+    secondary: "审核 / 补偿",
+    live: "运营在线",
+  },
+};
+
+function identityAvatar(user, variant = "topbar") {
+  const avatar = identityAvatarMeta[user?.userType] || identityAvatarMeta.SUPPLIER;
+  return `
+    <div class="avatar role-avatar role-avatar--${avatar.className} role-avatar--${variant}"
+      aria-label="${escapeHtml(avatar.label)}身份标识"
+      title="${escapeHtml(avatar.label)}身份标识">
+      <span class="role-avatar-mark">${escapeHtml(avatar.mark)}</span>
+      <span class="role-avatar-cue" aria-hidden="true">${escapeHtml(avatar.cue)}</span>
+    </div>
+  `;
+}
+
 /**
  * 作用：生成登录页 HTML。
  * 输入：
@@ -32,8 +78,31 @@ export function loginTemplate() {
           <span>物资协同平台</span>
         </div>
         <div class="login-copy">
-          <h1>采购、供货与运输协同的一体化平台</h1>
-          <p>采购方浏览供应商资质并确认购货订单，订单进入平台大厅并基于关注关系推送给司机。</p>
+          <h1>应急物资从采购到运输，一屏协同</h1>
+          <p>围绕采购方、供应商和司机，把应急物资采购、供货确认、运力抢单和履约追踪放进同一张运营工作台。</p>
+        </div>
+        <div class="hero-map-card" aria-label="运输追踪概览">
+          <div class="hero-map-head">
+            <span>运输追踪</span>
+            <strong>PO-BULK-00025736</strong>
+          </div>
+          <div class="hero-route-map">
+            <span class="route-node route-node--origin">仓</span>
+            <span class="route-line route-line--a"></span>
+            <span class="route-node route-node--driver">运</span>
+            <span class="route-line route-line--b"></span>
+            <span class="route-node route-node--dest">需</span>
+          </div>
+          <div class="hero-route-meta">
+            <div><span>临港物资园</span><strong>121.510 / 31.230</strong></div>
+            <div><span>司机上传节点</span><strong>Redis GEO 最新位置</strong></div>
+            <div><span>徐汇应急中心</span><strong>121.430 / 31.180</strong></div>
+          </div>
+        </div>
+        <div class="ops-flow">
+          <div><span>01</span><strong>采购需求</strong><small>供应商大厅 / RFQ / 抢购</small></div>
+          <div><span>02</span><strong>供货确认</strong><small>库存扣减 / 资质审核 / 报价</small></div>
+          <div><span>03</span><strong>运力调度</strong><small>司机抢单 / 运输追踪 / 履约榜</small></div>
         </div>
         <div class="login-metrics">
           <div class="metric-tile"><strong>3</strong><span>角色工作台</span></div>
@@ -43,7 +112,13 @@ export function loginTemplate() {
       </section>
       <section class="login-panel-wrap">
         <form class="login-panel" id="loginForm">
-          <h2>${state.authMode === "login" ? "登录工作台" : "注册账号"}</h2>
+          <div class="auth-panel-top">
+            <div>
+              <span>统一工作台入口</span>
+              <h2>${state.authMode === "login" ? "登录工作台" : "注册账号"}</h2>
+            </div>
+            <strong>Token</strong>
+          </div>
           <div class="auth-tabs">
             <button type="button" class="${state.authMode === "login" ? "active" : ""}" data-auth-mode="login">登录</button>
             <button type="button" class="${state.authMode === "register" ? "active" : ""}" data-auth-mode="register">注册</button>
@@ -111,9 +186,20 @@ export function loginTemplate() {
               ${state.loginLoading ? "处理中..." : state.authMode === "login" ? "登录" : "注册并登录"}
             </button>
           </div>
-          <div class="muted" style="margin-top:18px">
-            ${state.authMode === "login" ? "供应商 supplier01 / 采购方 purchaser01 / 司机 driver01 / 管理员 admin01，密码均为 123456。" : "注册会写入对应账号表和资料表，密码会加密存储。"}
-          </div>
+          ${
+            state.authMode === "login"
+              ? `
+                <div class="demo-accounts" aria-label="演示账号">
+                  <span>演示账号</span>
+                  <code>supplier01</code>
+                  <code>purchaser01</code>
+                  <code>driver01</code>
+                  <code>admin01</code>
+                  <small>密码 123456</small>
+                </div>
+              `
+              : '<div class="auth-note">注册会写入对应账号表和资料表，密码会加密存储。</div>'
+          }
         </form>
       </section>
     </main>
@@ -128,19 +214,25 @@ export function loginTemplate() {
  */
 export function appTemplate() {
   const meta = roleMeta[state.user.userType] || roleMeta.SUPPLIER;
+  const opsMeta = roleOpsMeta[state.user.userType] || roleOpsMeta.SUPPLIER;
   const pageTitle = meta.nav.find(([id]) => id === state.page)?.[1] || meta.nav[0][1];
   return `
-    <div class="app-shell">
+    <div class="app-shell app-shell--${state.user.userType.toLowerCase()}">
       <aside class="sidebar ${state.sidebarOpen ? "open" : ""}" id="sidebar">
         <div class="brand">
           <div class="brand-mark">M</div>
           <span>物资协同平台</span>
+        </div>
+        <div class="sidebar-scope">
+          <span>${escapeHtml(opsMeta.scope)}</span>
+          <strong>${escapeHtml(opsMeta.live)}</strong>
         </div>
         <nav class="nav">
           ${meta.nav
             .map(
               ([id, label]) => `
                 <button class="${state.page === id ? "active" : ""}" data-page="${id}">
+                  <i aria-hidden="true"></i>
                   <span>${label}</span>
                 </button>
               `,
@@ -148,8 +240,12 @@ export function appTemplate() {
             .join("")}
         </nav>
         <div class="sidebar-card">
-          <strong>${meta.label}模式</strong>
-          <div class="muted">当前权限自动通过，后续可在网关和服务层补细粒度 RBAC。</div>
+          <strong>${escapeHtml(opsMeta.primary)}</strong>
+          <div class="muted">${escapeHtml(opsMeta.secondary)}</div>
+          <div class="side-status">
+            <span>Redis Token</span>
+            <em>已接入</em>
+          </div>
         </div>
       </aside>
       <main class="main">
@@ -158,6 +254,11 @@ export function appTemplate() {
           <div class="page-title">
             <h1>${pageTitle}</h1>
             <span>${escapeHtml(state.user.displayName)} · ${meta.label}</span>
+          </div>
+          <div class="ops-strip" aria-label="系统运行状态">
+            <span><i></i>网关在线</span>
+            <span><i></i>Redis 登录态</span>
+            <span><i></i>MQ 异步链路</span>
           </div>
           <button class="notification-btn ${unreadNotificationCount() ? "active" : ""}" id="notificationBtn" type="button">
             <span>消息</span>
@@ -168,7 +269,7 @@ export function appTemplate() {
               <strong>${escapeHtml(state.user.username)}</strong>
               <div class="muted">在线 · Token 鉴权</div>
             </div>
-            <div class="avatar">${escapeHtml(state.user.displayName).slice(0, 1)}</div>
+            ${identityAvatar(state.user)}
           </div>
           <button class="btn btn-danger btn-sm" type="button" data-logout>退出登录</button>
         </header>
@@ -181,6 +282,7 @@ export function appTemplate() {
       ${reviewModalTemplate()}
       ${acceptanceModalTemplate()}
       ${paymentModalTemplate()}
+      ${trackingModalTemplate()}
       ${timelineModalTemplate()}
     </div>
   `;
@@ -485,7 +587,10 @@ export function supplierQualificationPanel() {
     <div class="layout-2">
       <div class="panel">
         <div class="panel-head">
-          <div><h2>企业资质资料</h2><div class="muted">保存后会进入待复核，管理员审核页会同步显示完整度和风险项。</div></div>
+          <div class="panel-title-with-avatar">
+            ${identityAvatar(state.user, "panel")}
+            <div><h2>企业资质资料</h2><div class="muted">保存后会进入待复核，管理员审核页会同步显示完整度和风险项。</div></div>
+          </div>
           <span class="chip ${qualificationStatusClass(qualification.auditStatus)}">${escapeHtml(qualification.auditStatusText || "待完善")}</span>
         </div>
         <form class="panel-body form-grid" id="supplierQualificationForm">
@@ -1066,13 +1171,26 @@ export function rankingPanel() {
         rank: item.rank,
       }));
   const drivers = rankings.drivers || [];
+  const totalParticipants = purchasers.length + suppliers.length + drivers.length;
+  const bestItem = [purchasers[0], suppliers[0], drivers[0]]
+    .filter(Boolean)
+    .sort((left, right) => Number(right.ratingScore || 0) - Number(left.ratingScore || 0))[0];
   return `
     <div class="panel ranking-panel">
-      <div class="panel-head"><div><h2>三方履约排行榜</h2><div class="muted">采购方、供应商、司机三类角色都能看到三张履约评分榜。</div></div></div>
+      <div class="panel-head ranking-head">
+        <div>
+          <h2>三方履约排行榜</h2>
+          <div class="muted">基于订单评价沉淀采购方、供应商、司机三类履约信用。</div>
+        </div>
+        <div class="ranking-summary" aria-label="排行榜摘要">
+          <span><strong>${totalParticipants}</strong> 上榜主体</span>
+          <span><strong>${bestItem ? escapeHtml(bestItem.ratingScore) : "-"}</strong> 最高评分</span>
+        </div>
+      </div>
       <div class="panel-body ranking-board">
-        ${rankingList("采购方履约排行榜", purchasers)}
-        ${rankingList("供应商履约排行榜", suppliers)}
-        ${rankingList("司机履约排行榜", drivers)}
+        ${rankingList("采购方履约排行榜", "需求确认与收货履约", purchasers, "采", "purchasers")}
+        ${rankingList("供应商履约排行榜", "供货稳定性与资质履约", suppliers, "供", "suppliers")}
+        ${rankingList("司机履约排行榜", "运输响应与交付履约", drivers, "运", "drivers")}
       </div>
     </div>
   `;
@@ -1123,19 +1241,77 @@ export function dispatchRecommendationPanel() {
   `;
 }
 
-function rankingList(title, items) {
+const rankingAvatarRoles = {
+  purchasers: "purchaser",
+  suppliers: "supplier",
+  drivers: "driver",
+};
+
+function rankingAvatarText(name, fallback) {
+  const text = String(name || "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  const chineseCharacters = text.match(/[\u4e00-\u9fff]/g);
+  if (chineseCharacters?.length) return chineseCharacters.slice(0, 2).join("");
+  const parts = text.split(/[\s·.,_-]+/).filter(Boolean);
+  if (parts.length > 1) {
+    return parts.slice(0, 2).map((part) => part.charAt(0)).join("").toUpperCase();
+  }
+  return text.slice(0, 2).toUpperCase();
+}
+
+function rankingRow(item, rankingKey, mark) {
+  const rank = Number(item.rank || 0);
+  const rankClass = rank > 0 && rank <= 3 ? ` is-top-${rank}` : "";
+  const roleClass = rankingAvatarRoles[rankingKey] || "default";
+  const scoreWidth = Math.max(0, Math.min(100, Number(item.ratingScore || 0) * 20));
+  const participantName = item.displayName || "未命名主体";
   return `
-    <section class="ranking-list ranking-column">
-      <h3>${escapeHtml(title)}</h3>
+    <div class="ranking-row${rankClass}" data-ranking-entry="${escapeHtml(rankingKey)}">
+      <span class="rank-no">#${escapeHtml(item.rank)}</span>
+      <div class="ranking-avatar ranking-avatar--${escapeHtml(roleClass)}" aria-hidden="true">
+        ${escapeHtml(rankingAvatarText(participantName, mark))}
+      </div>
+      <div class="ranking-account">
+        <strong title="${escapeHtml(participantName)}">${escapeHtml(participantName)}</strong>
+        <div class="ranking-meter" aria-hidden="true">
+          <i style="width:${scoreWidth}%"></i>
+        </div>
+      </div>
+      <span class="ranking-score">${escapeHtml(item.ratingScore)} 分</span>
+    </div>
+  `;
+}
+
+function rankingList(title, subtitle, items, mark, rankingKey) {
+  const topItems = items.slice(0, 10);
+  const visibleCount = 6;
+  const shouldScroll = topItems.length > visibleCount;
+  return `
+    <section class="ranking-column" data-ranking-key="${escapeHtml(rankingKey)}">
+      <div class="ranking-column-head">
+        <div class="ranking-role-mark">${escapeHtml(mark)}</div>
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          <span>${escapeHtml(subtitle)}</span>
+        </div>
+      </div>
       ${
-        items.length
-          ? items.map((item) => `
-              <div class="ranking-row">
-                <span class="rank-no">#${item.rank}</span>
-                <strong>${escapeHtml(item.displayName)}</strong>
-                <span class="chip green">${escapeHtml(item.ratingScore)} 分</span>
+        topItems.length
+          ? `
+              <div class="ranking-scroll-frame ${shouldScroll ? "is-scrollable" : ""}">
+                <div class="ranking-compact-list ranking-account-list"
+                  data-ranking-window="${escapeHtml(rankingKey)}"
+                  data-visible-count="${visibleCount}"
+                  data-ranking-count="${topItems.length}">
+                  ${topItems.map((item) => rankingRow(item, rankingKey, mark)).join("")}
+                </div>
+                ${
+                  shouldScroll
+                    ? `<button class="ranking-scroll-button" type="button" data-scroll-ranking="${escapeHtml(rankingKey)}" aria-label="向下浏览${escapeHtml(title)}">↓</button>`
+                    : ""
+                }
               </div>
-            `).join("")
+            `
           : '<div class="empty">暂无排行榜数据。</div>'
       }
     </section>
@@ -1735,6 +1911,120 @@ export function timelineModalTemplate() {
 }
 
 /**
+ * 作用：生成运输追踪弹窗 HTML。
+ * 输入：
+ * - 无输入参数。
+ * 输出：返回 HTML 字符串，浏览器会把它显示成页面内容。
+ */
+export function trackingModalTemplate() {
+  if (!state.trackingModal) return "";
+  const { order, tracking } = state.trackingModal;
+  const timeline = tracking.timeline || [];
+  const locationReports = tracking.locationReports || [];
+  const originPoint = formatPoint(tracking.originLongitude, tracking.originLatitude);
+  const destinationPoint = formatPoint(tracking.destinationLongitude, tracking.destinationLatitude);
+  return `
+    <div class="modal-backdrop" role="presentation" data-close-tracking="true">
+      <section class="modal-card tracking-modal-card" role="dialog" aria-modal="true" aria-labelledby="trackingTitle">
+        <div class="modal-head">
+          <div>
+            <h2 id="trackingTitle">运输追踪</h2>
+            <div class="muted">${escapeHtml(tracking.orderId || order.id)} · ${escapeHtml(order.materialName)} · 司机 ${escapeHtml(tracking.driverId ?? "待分配")}</div>
+          </div>
+          <span class="chip ${orderStatusClass(tracking.status || order.status)}">${escapeHtml(tracking.status || order.status)}</span>
+          <button class="icon-btn" type="button" aria-label="关闭运输追踪弹窗" data-close-tracking="true">×</button>
+        </div>
+        <div class="modal-body tracking-modal-body">
+          <section class="tracking-route-panel">
+            <div class="tracking-section-head">
+              <h3>路线概览</h3>
+              <span class="chip blue">起终点坐标</span>
+            </div>
+            <div class="tracking-route">
+              ${trackingPlaceNode("起", "发货地", tracking.originAddress || order.originAddress || "待确认发货地", tracking.originLongitude, tracking.originLatitude, originPoint, "origin")}
+              <div class="tracking-route-connector" aria-hidden="true"></div>
+              ${trackingPlaceNode("终", "目的地", tracking.destinationAddress || order.destinationAddress || "待确认目的地", tracking.destinationLongitude, tracking.destinationLatitude, destinationPoint, "destination")}
+            </div>
+            <div class="tracking-location-reports">
+              <div class="tracking-section-head tracking-section-head--compact">
+                <h3>司机上传节点</h3>
+                <span class="chip green">${locationReports.length} 个节点</span>
+              </div>
+              ${
+                locationReports.length
+                  ? locationReports.map((report) => trackingLocationReportNode(report)).join("")
+                  : '<div class="empty">司机还没有上传到达节点。</div>'
+              }
+            </div>
+          </section>
+          <section class="tracking-timeline-panel">
+            <div class="tracking-section-head">
+              <h3>履约时间线</h3>
+              <span class="chip green">${timeline.length} 条记录</span>
+            </div>
+            <div class="timeline tracking-timeline">
+              ${
+                timeline.length
+                  ? timeline.map((item) => `
+                      <div class="timeline-item">
+                        <span class="dot"></span>
+                        <div>
+                          <strong>${escapeHtml(item.action)}</strong>
+                          <div class="muted">${escapeHtml(item.status)} · ${escapeHtml(item.operatorType)} ${escapeHtml(item.operatorId)}</div>
+                          <div class="muted">${escapeHtml(item.remark)} · ${escapeHtml(item.createdAt)}</div>
+                        </div>
+                        <span class="chip blue">${escapeHtml(item.status)}</span>
+                      </div>
+                    `).join("")
+                  : '<div class="empty">暂无运输追踪时间线。</div>'
+              }
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function trackingPlaceNode(mark, label, address, longitude, latitude, point, tone) {
+  return `
+    <div class="tracking-place">
+      <div class="tracking-pin tracking-pin--${escapeHtml(tone)}">${escapeHtml(mark)}</div>
+      <div class="tracking-place-card">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(address)}</strong>
+        <div class="tracking-coordinates">
+          ${
+            point
+              ? `
+                  <em>经度 ${escapeHtml(longitude)}</em>
+                  <em>纬度 ${escapeHtml(latitude)}</em>
+                `
+              : '<em>坐标待补充</em>'
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function trackingLocationReportNode(report) {
+  return `
+    <div class="tracking-report-node">
+      <div class="tracking-pin tracking-pin--report">达</div>
+      <div class="tracking-place-card">
+        <span>${escapeHtml(report.createdAt || "上传时间待同步")} · 司机 ${escapeHtml(report.driverId ?? "-")}</span>
+        <strong>${escapeHtml(report.remark || "到达运输节点")}</strong>
+        <div class="tracking-coordinates">
+          <em>经度 ${escapeHtml(report.longitude)}</em>
+          <em>纬度 ${escapeHtml(report.latitude)}</em>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * 作用：生成评价对象下拉选项 HTML。
  * 输入：
  * - order：订单对象，里面有订单编号、状态、采购方、供应商等信息。
@@ -1882,6 +2172,9 @@ export function orderActions(order, claimable) {
   if (state.user.userType === "DRIVER" && order.status === "司机已接单") {
     actions.push(actionButton("start-transport", order.id, "开始运输", "btn-primary", `start-transport:${order.id}`));
   }
+  if (state.user.userType === "DRIVER" && (order.status === "司机已接单" || order.status === "运输中")) {
+    actions.push(actionButton("report-location", order.id, "到达节点", "btn-ghost", `report-location:${order.id}`));
+  }
   if (state.user.userType === "DRIVER" && order.status === "运输中") {
     actions.push(actionButton("complete-transport", order.id, "完成运输", "btn-primary", `complete-transport:${order.id}`));
   }
@@ -1894,6 +2187,7 @@ export function orderActions(order, claimable) {
   if (order.status === "已完成" && state.user.userType !== "ADMIN") {
     actions.push(`<button class="btn btn-ghost btn-sm" data-review-order="${order.id}">评价履约</button>`);
   }
+  actions.push(`<button class="btn btn-ghost btn-sm" data-order-tracking="${order.id}">运输追踪</button>`);
   actions.push(`<button class="btn btn-ghost btn-sm" data-order-timeline="${order.id}">时间线</button>`);
   return actions;
 }
@@ -2093,7 +2387,7 @@ export function profilePanel(title, desc) {
     <div class="profile-layout">
       <div class="profile-card">
         <div class="profile-hero">
-          <div class="avatar">${escapeHtml(state.user.displayName).slice(0, 1)}</div>
+          ${identityAvatar(state.user, "profile")}
           <div>
             <h2>${escapeHtml(state.user.displayName)}</h2>
             <div class="muted">${roleMeta[state.user.userType].label} · ${desc}</div>

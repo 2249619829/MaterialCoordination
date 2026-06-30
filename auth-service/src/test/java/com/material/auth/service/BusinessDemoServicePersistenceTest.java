@@ -10,6 +10,8 @@ import com.material.auth.dto.business.PurchaseOrderRequest;
 import com.material.auth.dto.business.PurchaseRfqRequest;
 import com.material.auth.dto.business.SupplierQualificationRequest;
 import com.material.auth.dto.business.SupplierQuoteRequest;
+import com.material.auth.dto.business.TransportLocationReportRequest;
+import com.material.auth.entity.TransportLocationReport;
 import com.material.auth.entity.PurchaseRfq;
 import com.material.auth.entity.PurchaseRfqQuote;
 import com.material.auth.dto.business.SupplierMaterialManageRequest;
@@ -38,6 +40,7 @@ import com.material.auth.mapper.PurchaserProfileMapper;
 import com.material.auth.mapper.SupplierMaterialMapper;
 import com.material.auth.mapper.SupplierProfileMapper;
 import com.material.auth.mapper.SupplierAccountMapper;
+import com.material.auth.mapper.TransportLocationReportMapper;
 import com.material.auth.service.geo.Coordinates;
 import com.material.auth.service.geo.GeocodingService;
 import com.material.auth.service.impl.BusinessDemoService;
@@ -47,6 +50,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.core.GeoOperations;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -104,6 +109,8 @@ class BusinessDemoServicePersistenceTest {
     @Mock
     private OrderTimelineMapper orderTimelineMapper;
     @Mock
+    private TransportLocationReportMapper transportLocationReportMapper;
+    @Mock
     private RabbitTemplate rabbitTemplate;
     @Mock
     private AmqpAdmin amqpAdmin;
@@ -113,6 +120,8 @@ class BusinessDemoServicePersistenceTest {
     private HashOperations<String, Object, Object> hashOperations;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private GeoOperations<String, String> geoOperations;
     @Mock
     private ObjectMapper objectMapper;
     @Mock
@@ -126,6 +135,7 @@ class BusinessDemoServicePersistenceTest {
         initTableInfo(SupplierProfile.class);
         initTableInfo(PurchaserProfile.class);
         initTableInfo(DriverProfile.class);
+        initTableInfo(TransportLocationReport.class);
     }
 
     private void initTableInfo(Class<?> entityType) {
@@ -266,6 +276,45 @@ class BusinessDemoServicePersistenceTest {
         );
         assertThat(view.status()).isEqualTo("司机已接单");
         assertThat(view.driverId()).isEqualTo(8L);
+    }
+
+    @Test
+    void driverLocationReportPersistsTimelineAndLatestRedisGeoLocation() {
+        BusinessDemoService service = service();
+        PurchaseOrder order = waitingDriverOrder();
+        order.setStatus("运输中");
+        order.setDriverId(8L);
+        when(driverProfileMapper.selectOne(any())).thenReturn(driverProfile());
+        when(purchaseOrderMapper.selectById("PO-TRANSPORT-001")).thenReturn(order);
+        when(redisTemplate.opsForGeo()).thenReturn(geoOperations);
+
+        var view = service.reportTransportLocation(8L, "PO-TRANSPORT-001", new TransportLocationReportRequest(
+                new BigDecimal("121.473701"),
+                new BigDecimal("31.230416"),
+                "到达中转点"
+        ));
+
+        ArgumentCaptor<TransportLocationReport> reportCaptor = ArgumentCaptor.forClass(TransportLocationReport.class);
+        verify(transportLocationReportMapper).insert(reportCaptor.capture());
+        TransportLocationReport report = reportCaptor.getValue();
+        assertThat(report.getOrderId()).isEqualTo("PO-TRANSPORT-001");
+        assertThat(report.getDriverId()).isEqualTo(8L);
+        assertThat(report.getLongitude()).isEqualByComparingTo("121.473701");
+        assertThat(report.getLatitude()).isEqualByComparingTo("31.230416");
+        assertThat(report.getRemark()).isEqualTo("到达中转点");
+
+        ArgumentCaptor<com.material.auth.entity.OrderTimeline> timelineCaptor =
+                ArgumentCaptor.forClass(com.material.auth.entity.OrderTimeline.class);
+        verify(orderTimelineMapper).insert(timelineCaptor.capture());
+        assertThat(timelineCaptor.getValue().getAction()).isEqualTo("司机上传到达节点");
+        assertThat(timelineCaptor.getValue().getRemark()).contains("到达中转点", "121.473701", "31.230416");
+
+        verify(geoOperations).add(eq("driver:location:geo"), any(Point.class), eq("8"));
+        verify(geoOperations).add(eq("transport:order:location:geo"), any(Point.class), eq("PO-TRANSPORT-001"));
+        assertThat(view.orderId()).isEqualTo("PO-TRANSPORT-001");
+        assertThat(view.longitude()).isEqualByComparingTo("121.473701");
+        assertThat(view.latitude()).isEqualByComparingTo("31.230416");
+        assertThat(view.remark()).isEqualTo("到达中转点");
     }
 
     @Test
@@ -614,6 +663,7 @@ class BusinessDemoServicePersistenceTest {
                 orderPaymentMapper,
                 orderReviewMapper,
                 orderTimelineMapper,
+                transportLocationReportMapper,
                 rabbitTemplate,
                 amqpAdmin,
                 redisTemplate,

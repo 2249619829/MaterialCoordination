@@ -36,6 +36,8 @@ import com.material.auth.dto.business.SupplierQualificationRequest;
 import com.material.auth.dto.business.SupplierQualificationView;
 import com.material.auth.dto.business.SupplierRankingView;
 import com.material.auth.dto.business.SupplierStoreView;
+import com.material.auth.dto.business.TransportLocationReportRequest;
+import com.material.auth.dto.business.TransportLocationReportView;
 import com.material.auth.dto.business.TransportTrackingView;
 import com.material.auth.config.OrderRabbitConfig;
 import com.material.auth.entity.DriverFollow;
@@ -52,6 +54,7 @@ import com.material.auth.entity.PurchaseRfqQuote;
 import com.material.auth.entity.PurchaserProfile;
 import com.material.auth.entity.SupplierMaterial;
 import com.material.auth.entity.SupplierProfile;
+import com.material.auth.entity.TransportLocationReport;
 import com.material.auth.mapper.DriverFollowMapper;
 import com.material.auth.mapper.DriverProfileMapper;
 import com.material.auth.mapper.MaterialMapper;
@@ -68,6 +71,7 @@ import com.material.auth.mapper.SupplierMaterialMapper;
 import com.material.auth.mapper.SupplierProfileMapper;
 import com.material.auth.mapper.SupplierAccountMapper;
 import com.material.auth.entity.SupplierAccount;
+import com.material.auth.mapper.TransportLocationReportMapper;
 import com.material.auth.service.geo.Coordinates;
 import com.material.auth.service.geo.GeocodingService;
 import com.material.auth.service.impl.support.DispatchRecommendationSupport;
@@ -142,6 +146,8 @@ public class BusinessDemoService {
     private static final String EMPTY_CACHE_VALUE = "[]";
     private static final String SUPPLIER_RANKING_KEY = "ranking:supplier:fulfillment";
     private static final String SUPPLIER_GEO_KEY = "geo:supplier";
+    private static final String DRIVER_LOCATION_GEO_KEY = "driver:location:geo";
+    private static final String TRANSPORT_ORDER_LOCATION_GEO_KEY = "transport:order:location:geo";
     private static final String DRIVER_ATTENDANCE_KEY_PREFIX = "attendance:driver:";
     private static final String TARGET_SUPPLIER = "SUPPLIER";
     private static final String TARGET_PURCHASER = "PURCHASER";
@@ -197,6 +203,7 @@ public class BusinessDemoService {
     private final OrderPaymentMapper orderPaymentMapper;
     private final OrderReviewMapper orderReviewMapper;
     private final OrderTimelineMapper orderTimelineMapper;
+    private final TransportLocationReportMapper transportLocationReportMapper;
     private final RabbitTemplate rabbitTemplate;
     private final AmqpAdmin amqpAdmin;
     private final StringRedisTemplate redisTemplate;
@@ -239,6 +246,7 @@ public class BusinessDemoService {
                                OrderPaymentMapper orderPaymentMapper,
                                OrderReviewMapper orderReviewMapper,
                                OrderTimelineMapper orderTimelineMapper,
+                               TransportLocationReportMapper transportLocationReportMapper,
                                RabbitTemplate rabbitTemplate,
                                AmqpAdmin amqpAdmin,
                                StringRedisTemplate redisTemplate,
@@ -259,6 +267,7 @@ public class BusinessDemoService {
         this.orderPaymentMapper = orderPaymentMapper;
         this.orderReviewMapper = orderReviewMapper;
         this.orderTimelineMapper = orderTimelineMapper;
+        this.transportLocationReportMapper = transportLocationReportMapper;
         this.rabbitTemplate = rabbitTemplate;
         this.amqpAdmin = amqpAdmin;
         this.redisTemplate = redisTemplate;
@@ -509,6 +518,13 @@ public class BusinessDemoService {
         return StringUtils.hasText(value) ? value.trim() : "";
     }
 
+    private BigDecimal requiredCoordinate(BigDecimal value, String label) {
+        if (value == null) {
+            throw new IllegalArgumentException("请上传" + label);
+        }
+        return value;
+    }
+
     private Coordinates resolveRequiredCoordinates(String address, BigDecimal longitude, BigDecimal latitude) {
         if (longitude != null || latitude != null) {
             if (longitude == null || latitude == null) {
@@ -686,6 +702,13 @@ public class BusinessDemoService {
             throw new IllegalArgumentException("订单不存在");
         }
         assertOrderVisibleToUser(order, userId, userType);
+        List<TransportLocationReportView> locationReports = transportLocationReportMapper.selectList(
+                        new LambdaQueryWrapper<TransportLocationReport>()
+                                .eq(TransportLocationReport::getOrderId, orderId)
+                                .orderByAsc(TransportLocationReport::getCreateTime))
+                .stream()
+                .map(this::toTransportLocationReportView)
+                .toList();
         List<OrderTimelineView> timeline = orderTimelineMapper.selectList(new LambdaQueryWrapper<OrderTimeline>()
                         .eq(OrderTimeline::getOrderId, orderId)
                         .orderByAsc(OrderTimeline::getCreateTime))
@@ -702,8 +725,46 @@ public class BusinessDemoService {
                 order.getDestinationAddress(),
                 order.getDestinationLongitude(),
                 order.getDestinationLatitude(),
+                locationReports,
                 timeline
         );
+    }
+
+    @Transactional
+    public TransportLocationReportView reportTransportLocation(Long driverId,
+                                                               String orderId,
+                                                               TransportLocationReportRequest request) {
+        findDriver(driverId);
+        PurchaseOrder order = purchaseOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new IllegalArgumentException("订单不存在");
+        }
+        if (!driverId.equals(order.getDriverId())) {
+            throw new IllegalStateException("只能上传自己承运订单的位置");
+        }
+        if (!ORDER_CLAIMED.equals(order.getStatus()) && !ORDER_TRANSPORTING.equals(order.getStatus())) {
+            throw new IllegalStateException("当前订单状态不能上传运输位置");
+        }
+        BigDecimal longitude = requiredCoordinate(request.longitude(), "经度");
+        BigDecimal latitude = requiredCoordinate(request.latitude(), "纬度");
+        validateCoordinateRange(longitude, latitude);
+        String remark = StringUtils.hasText(request.remark()) ? request.remark().trim() : "到达运输节点";
+
+        TransportLocationReport report = new TransportLocationReport();
+        report.setOrderId(orderId);
+        report.setDriverId(driverId);
+        report.setLongitude(longitude);
+        report.setLatitude(latitude);
+        report.setRemark(remark);
+        report.setCreateTime(LocalDateTime.now());
+        transportLocationReportMapper.insert(report);
+
+        addTimeline(orderId, order.getStatus(), "司机上传到达节点", TARGET_DRIVER, driverId,
+                remark + "，经度 " + longitude + "，纬度 " + latitude);
+        writeLatestTransportGeo(driverId, orderId, longitude, latitude);
+        log.info("business_event event=driver_reported_location orderId={} driverId={} longitude={} latitude={}",
+                orderId, driverId, longitude, latitude);
+        return toTransportLocationReportView(report);
     }
 
     /**
@@ -2113,6 +2174,18 @@ public class BusinessDemoService {
         );
     }
 
+    private TransportLocationReportView toTransportLocationReportView(TransportLocationReport report) {
+        return new TransportLocationReportView(
+                report.getId(),
+                report.getOrderId(),
+                report.getDriverId(),
+                report.getLongitude(),
+                report.getLatitude(),
+                report.getRemark(),
+                report.getCreateTime().format(VIEW_TIME_FORMATTER)
+        );
+    }
+
     /**
      * 作用：把评价实体转换成前端展示对象。
      * 输入：
@@ -2713,6 +2786,16 @@ public class BusinessDemoService {
                         String.valueOf(supplier.getSupplierId())
                 );
             }
+        }
+    }
+
+    private void writeLatestTransportGeo(Long driverId, String orderId, BigDecimal longitude, BigDecimal latitude) {
+        try {
+            Point point = new Point(longitude.doubleValue(), latitude.doubleValue());
+            redisTemplate.opsForGeo().add(DRIVER_LOCATION_GEO_KEY, point, String.valueOf(driverId));
+            redisTemplate.opsForGeo().add(TRANSPORT_ORDER_LOCATION_GEO_KEY, point, orderId);
+        } catch (Exception exception) {
+            log.warn("transport latest geo cache update failed orderId={} driverId={}", orderId, driverId, exception);
         }
     }
 

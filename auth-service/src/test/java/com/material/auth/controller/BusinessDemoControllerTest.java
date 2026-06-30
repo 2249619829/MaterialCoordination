@@ -2,17 +2,24 @@ package com.material.auth.controller;
 
 import com.material.auth.dto.business.DispatchRecommendationView;
 import com.material.auth.dto.business.PurchaseOrderView;
+import com.material.auth.dto.business.TransportLocationReportRequest;
+import com.material.auth.dto.business.TransportLocationReportView;
 import com.material.auth.service.impl.BusinessDemoService;
 import com.material.common.constant.AuthConstants;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -72,6 +79,47 @@ class BusinessDemoControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(orderId))
                 .andExpect(jsonPath("$.data.status").value("司机已接单"));
+    }
+
+    @Test
+    void driverCanUploadTransportLocationByOrderIdPathVariable() throws Exception {
+        String orderId = "PO-20260603-1001";
+        when(businessDemoService.reportTransportLocation(eq(8L), eq(orderId), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new TransportLocationReportView(
+                        99L,
+                        orderId,
+                        8L,
+                        new BigDecimal("121.473701"),
+                        new BigDecimal("31.230416"),
+                        "到达中转点",
+                        "2026-06-30 16:40"
+                ));
+
+        mockMvc.perform(post("/api/transport-orders/{orderId}/location", orderId)
+                        .header(AuthConstants.HEADER_USER_ID, 8L)
+                        .header(AuthConstants.HEADER_USER_TYPE, "DRIVER")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "longitude": 121.473701,
+                                  "latitude": 31.230416,
+                                  "remark": "到达中转点"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.orderId").value(orderId))
+                .andExpect(jsonPath("$.data.driverId").value(8L))
+                .andExpect(jsonPath("$.data.longitude").value(121.473701))
+                .andExpect(jsonPath("$.data.latitude").value(31.230416))
+                .andExpect(jsonPath("$.data.remark").value("到达中转点"));
+
+        ArgumentCaptor<TransportLocationReportRequest> requestCaptor =
+                ArgumentCaptor.forClass(TransportLocationReportRequest.class);
+        verify(businessDemoService).reportTransportLocation(eq(8L), eq(orderId), requestCaptor.capture());
+        assertThat(requestCaptor.getValue().longitude()).isEqualByComparingTo("121.473701");
+        assertThat(requestCaptor.getValue().latitude()).isEqualByComparingTo("31.230416");
+        assertThat(requestCaptor.getValue().remark()).isEqualTo("到达中转点");
     }
 
     @Test

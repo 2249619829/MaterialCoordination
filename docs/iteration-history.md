@@ -16,6 +16,9 @@
 | V0.8 | 2026-06-18 至 2026-06-21 | 压测与性能说明 | JMeter 脚本、大数据量准备脚本、压测报告、性能瓶颈说明 | `performance/run-panic-buy.sh`、`docs/performance.md` |
 | V0.9 | 2026-06-22 至 2026-06-25 | 文档和演示包装 | README、架构文档、API 文档、启动文档、演示讲解稿、Windows 交接说明 | 文档走读、干净副本启动检查 |
 | V1.0 | 2026-06-26 至 2026-06-29 | 项目展示收口 | 迭代记录、GitHub 展示清理、测试命令补齐、提交说明规范化 | `mvn test`、`npm test` |
+| V1.1 | 2026-06-29 | 前端视觉升级 | 白底应急物流调度台、工业调度感信息层级、角色工作台视觉统一 | 前端 Node 测试、浏览器截图检查 |
+| V1.2 | 2026-06-30 | 前端运输追踪接入 | 运输追踪弹窗设计、tracking 接口接入方案、路线节点和时间线聚合展示 | 设计走读、前端 Node 测试、`scripts/smoke-test.sh` |
+| V1.3 | 2026-06-30 | 司机到达节点上报 | 浏览器定位上传、位置上报表、运输追踪司机节点、Redis GEO 最新位置缓存 | 后端 JUnit、前端 Node 测试、`scripts/smoke-test.sh` |
 
 ## V0.1 基础工程与登录鉴权
 
@@ -165,6 +168,108 @@ npm --prefix web-frontend test
 - 截图或录屏：补到 `docs/images/` 并在 README 中展示。
 - GitHub Pages 或个人作品站：前端可静态部署，后端用本地/演示环境说明。
 - 更细粒度提交：后续每个功能按“后端模型 / 前端展示 / 文档 / 测试”拆 commit。
+
+## V1.1 前端视觉升级
+
+时间：2026-06-29
+
+这一阶段聚焦前端展示质感，不改变后端接口、不引入 React/Vue 等新框架，继续保留原生 HTML/CSS/JavaScript 的轻量实现。视觉方向确定为“白底应急物流调度台”：页面保持清爽白底，但信息组织更像应急物流运营中心，而不是普通表单后台。
+
+设计取舍：
+
+- 不采用黑色大屏作为主方向，避免演示时过重、过假。
+- 不采用通用 SaaS 后台模板作为主方向，避免采购、供货、运力调度这些业务特征被弱化。
+- 选择白底工业调度台：用冷白/浅灰背景、深色文字、细边框、紧凑数据卡、状态色和订单池结构表达“调度中心”气质。
+
+主要改造点：
+
+- 登录页强调应急采购、供应商供货、司机运力调度三类链路。
+- 应用主界面强化顶部运行状态、角色身份、消息和退出操作的层次。
+- 侧边栏、数据卡、订单列表、排行榜、供应商卡片、表单和弹窗统一为调度台视觉语言。
+- 状态标签继续使用蓝绿、橙色、红色等语义色：蓝绿表示运输/调度，橙色表示待处理，红色表示异常。
+- 保持 8px 左右的圆角、清晰边框和稳定尺寸，避免营销页式大卡片、装饰光斑和过度渐变。
+
+验证方式：
+
+- `npm --prefix web-frontend test` 验证现有前端渲染与交互测试。
+- 浏览器访问 `http://localhost:5173`，检查登录页、角色工作台、桌面和移动宽度下是否有文本溢出、遮挡、空白页或控制台错误。
+
+## V1.2 前端运输追踪接入
+
+时间：2026-06-30
+
+这一阶段目标是把已经完成的后端运输追踪接口接入前端，让面试和演示时不再只停留在“后端有 tracking 接口”的表述。前端仍保持原生 HTML/CSS/JavaScript，不引入地图 SDK；先做一个业务后台可解释的运输追踪弹窗，展示订单当前状态、承运司机、发货地、目的地、经纬度和状态时间线。
+
+设计范围：
+
+- 在订单卡片操作区新增“运输追踪”按钮，面向采购方、供应商、司机、管理员可见订单复用同一入口。
+- 点击后调用 `GET /api/transport-orders/{orderId}/tracking`，把结果写入前端 `trackingModal` 状态。
+- 弹窗顶部展示订单编号、当前状态、司机 ID 和物资名称。
+- 弹窗主体分为两块：路线概览和履约时间线。
+- 路线概览展示“发货地 -> 目的地”的节点式布局，包含地址、经度、纬度，不伪装成实时地图。
+- 履约时间线复用现有时间线样式，展示后端返回的 timeline；如果没有时间线，显示空态。
+- 请求失败时使用现有 toast 机制提示“运输追踪加载失败”，不让页面卡死。
+
+不在本阶段范围内：
+
+- 不接入高德、百度、Mapbox 等地图 SDK。
+- 不做实时司机位置上报、轨迹回放、ETA 预测或路线规划。
+- 不新增后端 tracking 字段，优先使用现有 `TransportTrackingView`。
+
+实现切入点：
+
+- `web-frontend/assets/js/state.js`：新增 `trackingModal` 状态。
+- `web-frontend/assets/app.js`：新增 `openTrackingModal`、`closeTrackingModal`，绑定 `data-order-tracking` 和关闭事件。
+- `web-frontend/assets/js/views.js`：新增 `trackingModalTemplate`，并在订单操作按钮中加入“运输追踪”。
+- `web-frontend/assets/styles.css`：新增路线节点、坐标、追踪弹窗的紧凑样式。
+- `web-frontend/assets/app.test.js`：补充 tracking 弹窗渲染、按钮出现和接口状态的测试。
+
+验收标准：
+
+- 订单卡片中能看到“运输追踪”按钮。
+- 点击后调用 `/api/transport-orders/{orderId}/tracking`，弹窗展示状态、司机、发货地、目的地、经纬度和时间线。
+- 真实环境下 `scripts/smoke-test.sh` 继续通过，确认后端 tracking 字段仍完整。
+- 前端 `npm --prefix web-frontend test` 通过，覆盖按钮和弹窗渲染。
+- 浏览器检查桌面和移动端弹窗，不出现文本重叠、横向溢出或控制台错误。
+
+## V1.3 司机到达节点上报
+
+时间：2026-06-30
+
+这一阶段把运输追踪从“展示起终点和状态时间线”升级为“司机可主动上报到达节点”。司机在运输订单卡片点击“到达节点”后，前端通过浏览器 Geolocation 获取当前经纬度，调用后端位置上报接口；后端校验司机是否属于该订单，再将本次位置节点持久化，并同步更新 Redis GEO 中的司机/订单最新位置。
+
+设计范围：
+
+- 司机端在“司机已接单”和“运输中”订单上展示“到达节点”按钮。
+- 前端调用浏览器 `navigator.geolocation` 获取经纬度，不接地图 SDK，不需要地图 API key。
+- 新增 `POST /api/transport-orders/{orderId}/location`，接收 `longitude`、`latitude` 和 `remark`。
+- 新增 `transport_location_report` 表，保存每次司机上传的位置历史，避免从时间线备注里解析坐标。
+- 上传成功后写入订单时间线，action 为“司机上传到达节点”，用于履约过程展示。
+- Redis GEO 只保存司机和订单最新位置，分别使用 `driver:location:geo` 和 `transport:order:location:geo`，用于后续附近查询、距离计算或实时位置扩展。
+- 运输追踪弹窗新增“司机上传节点”区域，聚合展示上传时间、司机、备注、经纬度。
+
+实现切入点：
+
+- `auth-service/src/main/java/com/material/auth/entity/TransportLocationReport.java`：新增位置上报实体。
+- `auth-service/src/main/java/com/material/auth/mapper/TransportLocationReportMapper.java`：新增 MyBatis Plus mapper。
+- `auth-service/src/main/java/com/material/auth/dto/business/TransportLocationReportRequest.java`：新增上传请求 DTO。
+- `auth-service/src/main/java/com/material/auth/dto/business/TransportLocationReportView.java`：新增上传节点视图 DTO。
+- `auth-service/src/main/java/com/material/auth/dto/business/TransportTrackingView.java`：扩展 `locationReports` 字段。
+- `auth-service/src/main/java/com/material/auth/service/impl/BusinessDemoService.java`：新增上传校验、MySQL 持久化、时间线写入和 Redis GEO 更新。
+- `auth-service/src/main/java/com/material/auth/controller/BusinessDemoController.java`：新增司机位置上报接口。
+- `web-frontend/assets/app.js`：新增 `uploadTransportLocation`，完成浏览器定位、接口调用、刷新追踪弹窗。
+- `web-frontend/assets/js/views.js`：新增“到达节点”按钮和 tracking 弹窗上传节点展示。
+- `web-frontend/assets/styles.css`：新增司机上传节点样式。
+- `sql/init/01_schema.sql` 和 `sql/migrations/20260630_transport_location_report.sql`：新增位置上报表。
+
+验收标准：
+
+- 司机运输阶段订单可以点击“到达节点”。
+- 浏览器授权定位后，前端上传当前经纬度到后端。
+- 后端拒绝非承运司机上传，拒绝非运输阶段订单上传。
+- 每次上传在 `transport_location_report` 留存历史记录，并在 `order_timeline` 出现履约事件。
+- Redis GEO 写入失败不影响 MySQL 历史记录。
+- 运输追踪弹窗能展示司机上传节点和经纬度。
 
 ## 推荐 Git 提交说明
 
