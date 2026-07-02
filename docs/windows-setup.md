@@ -91,7 +91,7 @@ Docker Compose 的 MySQL 默认密码是 `root`，所以启动后端前需要设
 
 ```bash
 export MYSQL_PASSWORD=root
-export SPRING_CLOUD_NACOS_DISCOVERY_IP=127.0.0.1
+export NACOS_DISCOVERY_IP=127.0.0.1
 mvn -q -pl auth-service spring-boot:run
 ```
 
@@ -99,7 +99,7 @@ mvn -q -pl auth-service spring-boot:run
 
 ```bash
 export MYSQL_PASSWORD=root
-export SPRING_CLOUD_NACOS_DISCOVERY_IP=127.0.0.1
+export NACOS_DISCOVERY_IP=127.0.0.1
 mvn -q -pl gateway-service spring-boot:run
 ```
 
@@ -107,7 +107,7 @@ mvn -q -pl gateway-service spring-boot:run
 
 ```powershell
 $env:MYSQL_PASSWORD="root"
-$env:SPRING_CLOUD_NACOS_DISCOVERY_IP="127.0.0.1"
+$env:NACOS_DISCOVERY_IP="127.0.0.1"
 mvn -q -pl auth-service spring-boot:run
 ```
 
@@ -115,7 +115,7 @@ mvn -q -pl auth-service spring-boot:run
 
 ```powershell
 $env:MYSQL_PASSWORD="root"
-$env:SPRING_CLOUD_NACOS_DISCOVERY_IP="127.0.0.1"
+$env:NACOS_DISCOVERY_IP="127.0.0.1"
 mvn -q -pl gateway-service spring-boot:run
 ```
 
@@ -192,7 +192,7 @@ mysql -h127.0.0.1 -uroot -proot material_coordination < sql/init/01_schema.sql
 检查 Nacos 中 `auth-service` 是否注册为 `127.0.0.1:8081`。如果注册成 WSL2 或 Docker 虚拟网卡地址，重启后端时加上：
 
 ```bash
-export SPRING_CLOUD_NACOS_DISCOVERY_IP=127.0.0.1
+export NACOS_DISCOVERY_IP=127.0.0.1
 ```
 
 ### MySQL 连接失败

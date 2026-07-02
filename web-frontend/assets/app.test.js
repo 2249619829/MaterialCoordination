@@ -199,6 +199,59 @@ test("order cards expose a transport tracking action", () => {
   assert.match(html, /运输追踪/);
 });
 
+test("order cards keep route compact and hide verbose flow metadata", () => {
+  const verboseSource = "采购方确认购货后进入平台大厅 · Pudong New Area, Shanghai, China -> Shanghai, China";
+  const verbosePush = "关注采购方的司机 / 采购方关注的司机 · 121.544, 31.221 / 121.47, 31.23";
+  const originAddress = "Bulk supplier warehouse 0736, Pudong New Area, Shanghai, China";
+  const destinationAddress = "Bulk emergency purchasing center 05736, Minhang District, Shanghai, China";
+  const order = {
+    id: "PO-VERBOSE-001",
+    purchaserId: 1,
+    purchaserName: "Bulk Purchaser Co. 05736",
+    supplierId: 7,
+    supplierName: "Bulk Supplier Co. 0736",
+    materialId: 101,
+    materialName: "Bulk Material 00006",
+    category: "steel",
+    quantity: "246 piece",
+    amount: "CNY 107256",
+    status: "司机已接单",
+    source: verboseSource,
+    pushedTo: verbosePush,
+    driverId: 8,
+    pushStatus: "CLAIMED",
+    originAddress,
+    originLongitude: "121.544",
+    originLatitude: "31.221",
+    destinationAddress,
+    destinationLongitude: "121.47",
+    destinationLatitude: "31.23",
+  };
+
+  state.user = { id: 8, userType: "DRIVER", username: "driver01", displayName: "司机" };
+  state.page = "push";
+  state.showNotifications = false;
+  state.notifications = [];
+  state.pushOrders = [order];
+  state.transportHall = [];
+  state.driverOrders = [];
+  state.follows = [];
+  state.attendance = { online: true, date: "2026-07-01" };
+  state.timelineModal = null;
+  state.trackingModal = null;
+
+  const cardHtml = appTemplate();
+
+  assert.equal(cardHtml.includes("采购方确认购货后进入平台大厅"), false);
+  assert.equal(cardHtml.includes("关注采购方的司机"), false);
+  assert.equal(cardHtml.includes("Bulk supplier warehouse 0736"), false);
+  assert.equal(cardHtml.includes("Bulk emergency purchasing center 05736"), false);
+  assert.equal(cardHtml.includes("Shanghai, China"), true);
+  assert.equal(cardHtml.includes("121.5440, 31.2210"), true);
+  assert.match(cardHtml, /data-order-tracking="PO-VERBOSE-001"/);
+  assert.match(cardHtml, /data-order-timeline="PO-VERBOSE-001"/);
+});
+
 test("openTrackingModal loads tracking data and renders route nodes with timeline", async () => {
   assert.equal(typeof openTrackingModal, "function");
   state.user = { id: 1, userType: "DRIVER", username: "driver01", displayName: "司机" };
@@ -277,8 +330,8 @@ test("openTrackingModal loads tracking data and renders route nodes with timelin
   assert.match(html, /121\.4700/);
   assert.match(html, /司机上传节点/);
   assert.match(html, /到达中转点/);
-  assert.match(html, /121\.473701/);
-  assert.match(html, /31\.230416/);
+  assert.match(html, /121\.4737/);
+  assert.match(html, /31\.2304/);
   assert.match(html, /司机抢运输单预占成功/);
 });
 

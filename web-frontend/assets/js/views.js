@@ -1987,6 +1987,7 @@ export function trackingModalTemplate() {
 }
 
 function trackingPlaceNode(mark, label, address, longitude, latitude, point, tone) {
+  const coordinateText = point ? formatPoint(longitude, latitude) : "";
   return `
     <div class="tracking-place">
       <div class="tracking-pin tracking-pin--${escapeHtml(tone)}">${escapeHtml(mark)}</div>
@@ -1995,10 +1996,9 @@ function trackingPlaceNode(mark, label, address, longitude, latitude, point, ton
         <strong>${escapeHtml(address)}</strong>
         <div class="tracking-coordinates">
           ${
-            point
+            coordinateText
               ? `
-                  <em>经度 ${escapeHtml(longitude)}</em>
-                  <em>纬度 ${escapeHtml(latitude)}</em>
+                  <em>坐标 ${escapeHtml(coordinateText)}</em>
                 `
               : '<em>坐标待补充</em>'
           }
@@ -2009,6 +2009,7 @@ function trackingPlaceNode(mark, label, address, longitude, latitude, point, ton
 }
 
 function trackingLocationReportNode(report) {
+  const coordinateText = formatPoint(report.longitude, report.latitude);
   return `
     <div class="tracking-report-node">
       <div class="tracking-pin tracking-pin--report">达</div>
@@ -2016,8 +2017,7 @@ function trackingLocationReportNode(report) {
         <span>${escapeHtml(report.createdAt || "上传时间待同步")} · 司机 ${escapeHtml(report.driverId ?? "-")}</span>
         <strong>${escapeHtml(report.remark || "到达运输节点")}</strong>
         <div class="tracking-coordinates">
-          <em>经度 ${escapeHtml(report.longitude)}</em>
-          <em>纬度 ${escapeHtml(report.latitude)}</em>
+          <em>${coordinateText ? `坐标 ${escapeHtml(coordinateText)}` : "坐标待补充"}</em>
         </div>
       </div>
     </div>
@@ -2101,7 +2101,7 @@ export function renderOrderCard(order, claimable) {
       <div class="order-top">
         <div class="order-title">
           <strong>${escapeHtml(order.materialName)}</strong>
-          <span>${escapeHtml(order.id)} · ${escapeHtml(order.purchaserName)} -> ${escapeHtml(order.supplierName)}</span>
+          <span>${escapeHtml(order.id)} · ${escapeHtml(shortName(order.purchaserName))} → ${escapeHtml(shortName(order.supplierName))}</span>
         </div>
         <span class="chip ${orderStatusClass(order.status)}">${escapeHtml(order.status)}</span>
       </div>
@@ -2114,7 +2114,6 @@ export function renderOrderCard(order, claimable) {
         ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<span class="chip ${paymentStatusClass(order.paymentStatus)}">${escapeHtml(order.paymentStatus || "待付款")}</span>` : ""}
       </div>
       ${orderStatusProgress(order.status)}
-      <div class="muted">${escapeHtml(order.source)} · ${escapeHtml(order.pushedTo)}</div>
       ${orderRouteLine(order)}
       ${order.status === "已完成" ? `<div class="form-note">${escapeHtml(order.acceptanceSummary || "运输完成后由采购方验收签收")}</div>` : ""}
       ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<div class="form-note">${escapeHtml(order.paymentSummary || "验收完成后由采购方登记付款凭证")}</div>` : ""}
@@ -2129,25 +2128,45 @@ function orderRouteLine(order) {
   if (!order.originAddress && !order.destinationAddress) {
     return "";
   }
-  const origin = order.originAddress || "待确认发货地";
-  const destination = order.destinationAddress || "待确认目的地";
+  const origin = compactAddress(order.originAddress) || "待确认发货地";
+  const destination = compactAddress(order.destinationAddress) || "待确认目的地";
   const originPoint = formatPoint(order.originLongitude, order.originLatitude);
   const destinationPoint = formatPoint(order.destinationLongitude, order.destinationLatitude);
+  const routePoints = [originPoint, destinationPoint].filter(Boolean).join(" / ");
   return `
     <div class="route-line">
-      <span>${escapeHtml(origin)}</span>
-      <span class="route-arrow">-></span>
-      <span>${escapeHtml(destination)}</span>
-      ${originPoint || destinationPoint ? `<small>${escapeHtml(originPoint)} / ${escapeHtml(destinationPoint)}</small>` : ""}
+      <span class="order-point">${escapeHtml(origin)}</span>
+      <span class="route-arrow">→</span>
+      <span class="order-point">${escapeHtml(destination)}</span>
+      ${routePoints ? `<div class="order-route-coords"><span>${escapeHtml(routePoints)}</span></div>` : ""}
     </div>
   `;
+}
+
+function shortName(value) {
+  const text = `${value || ""}`.trim();
+  if (!text) return "";
+  return text.length > 16 ? `${text.slice(0, 16)}…` : text;
+}
+
+function compactAddress(value) {
+  const raw = `${value || ""}`.trim();
+  if (!raw) return "";
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 2) return raw;
+  return `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
 }
 
 function formatPoint(longitude, latitude) {
   if (longitude === null || longitude === undefined || latitude === null || latitude === undefined) {
     return "";
   }
-  return `${longitude}, ${latitude}`;
+  const normalizedLongitude = Number.parseFloat(String(longitude));
+  const normalizedLatitude = Number.parseFloat(String(latitude));
+  if (!Number.isFinite(normalizedLongitude) || !Number.isFinite(normalizedLatitude)) {
+    return "";
+  }
+  return `${normalizedLongitude.toFixed(4)}, ${normalizedLatitude.toFixed(4)}`;
 }
 
 /**
@@ -2344,7 +2363,10 @@ export function followRows(withAction = false) {
           <span class="dot"></span>
           <div>
             <strong>${escapeHtml(item.purchaserName)}</strong>
-            <div class="muted">司机关注：${item.followedByDriver ? "已关注" : "未关注"} · 采购方关注司机：${item.followedByPurchaser ? "已关注" : "未关注"}</div>
+            <div class="follow-status">
+              <span class="chip follow-chip ${item.followedByDriver ? "green" : "amber"}">${item.followedByDriver ? "我已关注" : "我未关注"}</span>
+              <span class="chip follow-chip ${item.followedByPurchaser ? "blue" : "amber"}">${item.followedByPurchaser ? "采购方已关注" : "采购方未关注"}</span>
+            </div>
           </div>
           ${
             withAction && !item.followedByDriver

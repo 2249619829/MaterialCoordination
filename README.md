@@ -45,10 +45,30 @@
 
 Windows / WSL2 迁移启动步骤见：[docs/windows-setup.md](docs/windows-setup.md)。
 
+### 新电脑推荐启动流程
+
+Docker Compose 会启动 MySQL、Redis、RabbitMQ、Nacos 这些中间件；`auth-service`、`gateway-service` 和前端仍在本机通过 JDK 21、Maven、Python 启动。
+
+```bash
+git clone https://github.com/2249619829/MaterialCoordination.git
+cd MaterialCoordination
+
+docker compose up -d mysql redis rabbitmq nacos
+docker compose ps
+
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
+
+scripts/start-local.sh
+scripts/smoke-test.sh
+```
+
+如果 `scripts/start-local.sh` 提示 Java 路径不存在，先确认本机 `java -version` 是 21，再按本机 JDK 安装位置调整 `use-java21.sh`，或参考 [docs/startup.md](docs/startup.md) 手动启动两个后端服务。
+
 如果本机 MySQL、Redis、RabbitMQ、Nacos 已经启动，推荐直接使用脚本启动应用：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 scripts/start-local.sh
 scripts/start-openresty.sh
 scripts/smoke-test.sh
@@ -72,6 +92,16 @@ scripts/start-local.sh --keep-alive
 本项目支持本地中间件或 Docker Compose。当前开发环境使用本地 MySQL、Redis、RabbitMQ、Nacos。
 配置项支持环境变量覆盖，首次运行可参考 `.env.example`。
 
+使用 Docker Compose 启动中间件时：
+
+```bash
+docker compose up -d mysql redis rabbitmq nacos
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
+```
+
+注意：Docker Compose 默认 MySQL root 密码是 `root`，而后端默认 `MYSQL_PASSWORD` 为空；如果不设置 `MYSQL_PASSWORD=root`，`auth-service` 会连接 MySQL 失败。
+
 常用端口：
 
 - MySQL：`3306`
@@ -87,7 +117,7 @@ scripts/start-local.sh --keep-alive
 ### 2. 初始化数据库
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 mysql -uroot material_coordination < sql/init/01_schema.sql
 mysql -uroot material_coordination < sql/init/02_seed.sql
 mysql -uroot material_coordination < sql/init/03_order_timeline.sql
@@ -102,7 +132,7 @@ mysql -uroot material_coordination < sql/migrations/20260610_logistics_places_an
 ### 3. 启动后端
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 source use-java21.sh
 mvn -q -pl auth-service spring-boot:run
 ```
@@ -125,7 +155,7 @@ export NACOS_DISCOVERY_IP=192.168.x.x
 ### 4. 启动前端
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination/web-frontend"
+cd MaterialCoordination/web-frontend
 python3 -m http.server 5173
 ```
 
@@ -134,7 +164,7 @@ python3 -m http.server 5173
 如果要通过 OpenResty 入口体验 Nginx Lua 令牌桶限流：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 scripts/start-openresty.sh
 ```
 

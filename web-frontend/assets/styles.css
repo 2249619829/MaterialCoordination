@@ -1308,6 +1308,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  align-items: flex-start;
 }
 
 .order-title {
@@ -1322,7 +1323,8 @@ button:disabled {
 
 .order-title span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .order-meta {
@@ -1337,7 +1339,7 @@ button:disabled {
   align-items: center;
   gap: 6px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1347,6 +1349,26 @@ button:disabled {
 
 .route-arrow {
   color: var(--muted);
+  font-weight: 900;
+}
+
+.order-point {
+  font-weight: 720;
+  color: var(--text);
+}
+
+.order-route-coords {
+  color: var(--muted);
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.order-route-coords span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  padding: 4px 8px;
 }
 
 .supplier-stats {
@@ -1631,6 +1653,21 @@ tbody tr:hover {
   position: relative;
 }
 
+.follow-status {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  row-gap: 5px;
+}
+
+.follow-chip {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 3px 8px;
+  max-width: 100%;
+}
+
 .dot {
   width: 10px;
   height: 10px;
@@ -1656,9 +1693,9 @@ tbody tr:hover {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, #fff, #fbfdff);
   border-radius: var(--radius);
-  padding: 15px;
+  padding: 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   box-shadow: var(--shadow-line);
 }
 

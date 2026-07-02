@@ -6,10 +6,34 @@
 
 ## 0. 最快启动流程
 
+### 新电脑使用 Docker 启动中间件
+
+Docker Compose 只负责启动 MySQL、Redis、RabbitMQ、Nacos；后端和前端仍在本机运行，所以还需要 JDK 21、Maven 和 Python 3。
+
+```bash
+git clone https://github.com/2249619829/MaterialCoordination.git
+cd MaterialCoordination
+
+docker compose up -d mysql redis rabbitmq nacos
+docker compose ps
+
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
+
+scripts/start-local.sh
+scripts/smoke-test.sh
+```
+
+注意：Docker Compose 默认 MySQL root 密码是 `root`，而项目后端默认 `MYSQL_PASSWORD` 为空；使用 Docker MySQL 时必须设置 `MYSQL_PASSWORD=root`。
+
+如果 `scripts/start-local.sh` 提示 Java 路径不存在，先确认本机 `java -version` 是 21，再按本机 JDK 安装位置调整 `use-java21.sh`，或按第 5 节手动启动后端。
+
+### 本机已有中间件
+
 如果你的 MySQL、Redis、RabbitMQ、Nacos 已经在本机启动，推荐直接用脚本启动和验证：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 scripts/start-local.sh
 scripts/start-openresty.sh
 scripts/smoke-test.sh
@@ -48,7 +72,7 @@ scripts/start-local.sh --keep-alive
 终端一：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 source use-java21.sh
 mvn -q -pl auth-service spring-boot:run
 ```
@@ -56,7 +80,7 @@ mvn -q -pl auth-service spring-boot:run
 终端二：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 source use-java21.sh
 mvn -q -pl gateway-service spring-boot:run
 ```
@@ -64,7 +88,7 @@ mvn -q -pl gateway-service spring-boot:run
 终端三：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination/web-frontend"
+cd MaterialCoordination/web-frontend
 npm run start
 ```
 
@@ -84,7 +108,7 @@ http://127.0.0.1:8088
 
 ## 1. 前置条件
 
-本机需要具备以下环境：
+本机完整本地运行需要具备以下环境：
 
 - JDK 21
 - Maven
@@ -95,7 +119,7 @@ http://127.0.0.1:8088
 - Python 3
 - OpenResty
 
-如果使用 Docker 启动中间件，还需要 Docker / Docker Compose。
+如果使用 Docker 启动中间件，本机可以不单独安装 MySQL、Redis、RabbitMQ、Nacos，但仍需要 JDK 21、Maven、Python 3 和 Docker / Docker Compose。OpenResty 是可选入口，不影响主流程启动。
 
 ## 2. 常用端口
 
@@ -129,7 +153,7 @@ lsof -nP -iTCP:8848 -sTCP:LISTEN
 在项目根目录执行：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 docker compose up -d mysql redis rabbitmq nacos
 ```
 
@@ -139,14 +163,45 @@ docker compose up -d mysql redis rabbitmq nacos
 docker compose ps
 ```
 
+Docker Compose 默认账号密码：
+
+| 服务 | 用户名 | 密码 |
+| --- | --- | --- |
+| MySQL | `root` | `root` |
+| RabbitMQ | `guest` | `guest` |
+
+使用 Docker MySQL 启动后端前，需要在启动后端的终端里设置：
+
+```bash
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
+```
+
 ## 4. 初始化数据库
 
 如果是第一次启动，先创建并初始化数据库。
 
+如果是 Docker Compose 第一次创建 MySQL 数据卷，`docker-compose.yml` 会自动执行 `sql/init` 下的初始化脚本。也可以手动检查或补导入：
+
+```bash
+mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS material_coordination DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h127.0.0.1 -uroot -proot material_coordination < sql/init/01_schema.sql
+mysql -h127.0.0.1 -uroot -proot material_coordination < sql/init/02_seed.sql
+mysql -h127.0.0.1 -uroot -proot material_coordination < sql/init/03_order_timeline.sql
+```
+
+如果本机没有 `mysql` 命令，可以进入 Docker 容器执行：
+
+```bash
+docker compose exec -T mysql mysql -uroot -proot material_coordination < sql/init/01_schema.sql
+docker compose exec -T mysql mysql -uroot -proot material_coordination < sql/init/02_seed.sql
+docker compose exec -T mysql mysql -uroot -proot material_coordination < sql/init/03_order_timeline.sql
+```
+
 本机 MySQL 常用命令：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 mysql -uroot -e "CREATE DATABASE IF NOT EXISTS material_coordination DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 mysql -uroot material_coordination < sql/init/01_schema.sql
 mysql -uroot material_coordination < sql/init/02_seed.sql
@@ -166,18 +221,30 @@ mysql -uroot -p
 - `auth-service`：登录、注册、订单、供应商、司机等核心业务。
 - `gateway-service`：统一网关，前端请求默认先访问它。
 
-建议优先使用：
+如果中间件由 Docker Compose 启动，建议使用：
+
+```bash
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
+scripts/start-local.sh
+```
+
+如果使用本机无密码 MySQL，直接执行：
 
 ```bash
 scripts/start-local.sh
 ```
+
+如果本机 MySQL 有其他密码，按实际密码设置 `MYSQL_PASSWORD`。
 
 如果手动启动，开两个终端分别执行下面命令。
 
 ### 终端一：启动 Auth Service
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
 source use-java21.sh
 mvn -q -pl auth-service spring-boot:run
 ```
@@ -192,7 +259,9 @@ Started AuthServiceApplication
 ### 终端二：启动 Gateway Service
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
+export MYSQL_PASSWORD=root
+export NACOS_DISCOVERY_IP=127.0.0.1
 source use-java21.sh
 mvn -q -pl gateway-service spring-boot:run
 ```
@@ -225,7 +294,7 @@ export NACOS_DISCOVERY_IP=192.168.x.x
 再开一个终端：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination/web-frontend"
+cd MaterialCoordination/web-frontend
 npm run start
 ```
 
@@ -261,7 +330,7 @@ opm get upyun/lua-resty-limit-rate
 启动 OpenResty：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 scripts/start-openresty.sh
 ```
 
@@ -485,7 +554,7 @@ kill <PID>
 如果中间件是 Docker Compose 启动的：
 
 ```bash
-cd "/Users/didi/Desktop/MaterialCoordination"
+cd MaterialCoordination
 docker compose down
 ```
 
