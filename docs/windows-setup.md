@@ -39,7 +39,7 @@ git clone https://github.com/2249619829/MaterialCoordination.git
 在项目根目录执行：
 
 ```bash
-docker compose up -d mysql redis rabbitmq nacos
+docker compose up -d
 docker compose ps
 ```
 
@@ -48,7 +48,7 @@ Docker Compose 默认端口：
 | 服务 | 地址 |
 | --- | --- |
 | MySQL | `127.0.0.1:3306` |
-| Redis | `127.0.0.1:6379` |
+| Redis Cluster | `127.0.0.1:6379-6384` |
 | RabbitMQ | `127.0.0.1:5672` |
 | RabbitMQ 管理页面 | `http://localhost:15672` |
 | Nacos | `http://localhost:8848` |
@@ -165,16 +165,16 @@ curl -s \
 
 ### Redis 在 Windows 上怎么处理
 
-建议使用 Docker Compose 里的 Redis 服务，不需要单独安装 Windows 版 Redis。
+建议使用 Docker Compose 里的 Redis Cluster 服务，不需要单独安装 Windows 版 Redis。
 
 ```bash
-docker compose up -d redis
+docker compose up -d redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5 redis-node-6 redis-cluster-init
 ```
 
 项目默认连接：
 
 ```text
-localhost:6379
+localhost:6379,localhost:6380,localhost:6381,localhost:6382,localhost:6383,localhost:6384
 ```
 
 ### 登录接口 500

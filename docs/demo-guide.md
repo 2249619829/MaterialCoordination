@@ -15,7 +15,7 @@
 确认中间件已经启动：
 
 - MySQL：`3306`
-- Redis：`6379`
+- Redis Cluster：`6379-6384`
 - RabbitMQ：`5672`
 - Nacos：`8848`
 

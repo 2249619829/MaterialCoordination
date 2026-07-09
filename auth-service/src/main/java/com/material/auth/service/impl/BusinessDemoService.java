@@ -153,10 +153,6 @@ public class BusinessDemoService {
     private static final String TARGET_PURCHASER = "PURCHASER";
     private static final String TARGET_DRIVER = "DRIVER";
     private static final String TARGET_ADMIN = "ADMIN";
-    private static final String PANIC_STOCK_KEY_PREFIX = "panic:stock:";
-    private static final String PANIC_BUYER_KEY_PREFIX = "panic:buyer:";
-    private static final String TRANSPORT_CLAIM_STOCK_KEY_PREFIX = "transport:claim:stock:";
-    private static final String TRANSPORT_CLAIM_DRIVER_KEY_PREFIX = "transport:claim:driver:";
     private static final String PUSH_STATUS_READ = "READ";
     private static final String PUSH_STATUS_CLAIMED = "CLAIMED";
     private static final Duration PENDING_ORDER_TTL = Duration.ofMinutes(30);
@@ -1670,8 +1666,8 @@ public class BusinessDemoService {
         }
 
         initTransportClaimStockIfNecessary(orderId);
-        String stockKey = TRANSPORT_CLAIM_STOCK_KEY_PREFIX + orderId;
-        String driverKey = TRANSPORT_CLAIM_DRIVER_KEY_PREFIX + orderId + ":" + driverId;
+        String stockKey = transportClaimStockKey(orderId);
+        String driverKey = transportClaimDriverKey(orderId, driverId);
         Long result = redisTemplate.execute(
                 TRANSPORT_CLAIM_SCRIPT,
                 List.of(stockKey, driverKey),
@@ -1895,7 +1891,7 @@ public class BusinessDemoService {
         initPanicStockIfNecessary(orderId);
         Long result = redisTemplate.execute(
                 PANIC_BUY_SCRIPT,
-                List.of(PANIC_STOCK_KEY_PREFIX + orderId, PANIC_BUYER_KEY_PREFIX + orderId + ":" + purchaserId),
+                List.of(panicStockKey(orderId), panicBuyerKey(orderId, purchaserId)),
                 String.valueOf(purchaserId),
                 String.valueOf(Duration.ofHours(2).toSeconds())
         );
@@ -3053,7 +3049,7 @@ public class BusinessDemoService {
      * 输出：无返回值。方法执行成功就表示操作完成。
      */
     private void initPanicStockIfNecessary(String orderId) {
-        String stockKey = PANIC_STOCK_KEY_PREFIX + orderId;
+        String stockKey = panicStockKey(orderId);
         Boolean initialized = redisTemplate.opsForValue().setIfAbsent(stockKey, "1", Duration.ofHours(2));
         if (Boolean.TRUE.equals(initialized)) {
             redisTemplate.opsForValue().set(stockKey, "1", Duration.ofHours(2));
@@ -3061,11 +3057,27 @@ public class BusinessDemoService {
     }
 
     private void initTransportClaimStockIfNecessary(String orderId) {
-        String stockKey = TRANSPORT_CLAIM_STOCK_KEY_PREFIX + orderId;
+        String stockKey = transportClaimStockKey(orderId);
         Boolean initialized = redisTemplate.opsForValue().setIfAbsent(stockKey, "1", Duration.ofHours(2));
         if (Boolean.TRUE.equals(initialized)) {
             redisTemplate.opsForValue().set(stockKey, "1", Duration.ofHours(2));
         }
+    }
+
+    private String panicStockKey(String orderId) {
+        return "panic:{" + orderId + "}:stock";
+    }
+
+    private String panicBuyerKey(String orderId, Long purchaserId) {
+        return "panic:{" + orderId + "}:buyer:" + purchaserId;
+    }
+
+    private String transportClaimStockKey(String orderId) {
+        return "transport:claim:{" + orderId + "}:stock";
+    }
+
+    private String transportClaimDriverKey(String orderId, Long driverId) {
+        return "transport:claim:{" + orderId + "}:driver:" + driverId;
     }
 
     /**

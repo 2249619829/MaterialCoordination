@@ -274,8 +274,36 @@ class BusinessDemoServicePersistenceTest {
                 eq(OrderRabbitConfig.ORDER_CLAIMED_ROUTING_KEY),
                 eq("transport:PO-TRANSPORT-001:8")
         );
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redisTemplate).execute(any(), keysCaptor.capture(), eq("8"), eq(String.valueOf(Duration.ofHours(2).toSeconds())));
+        assertThat(keysCaptor.getValue()).containsExactly(
+                "transport:claim:{PO-TRANSPORT-001}:stock",
+                "transport:claim:{PO-TRANSPORT-001}:driver:8"
+        );
         assertThat(view.status()).isEqualTo("司机已接单");
         assertThat(view.driverId()).isEqualTo(8L);
+    }
+
+    @Test
+    void panicBuyUsesHashTaggedRedisKeysForClusterLuaScript() {
+        BusinessDemoService service = service();
+        PurchaseOrder order = panicBuyingOrder();
+        when(purchaseOrderMapper.selectById("PO-PANIC-001")).thenReturn(order);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), eq("1"), any(Duration.class))).thenReturn(true);
+        when(redisTemplate.execute(any(), anyList(), any(), any())).thenReturn(0L);
+
+        var view = service.panicBuyOrder(20L, "PO-PANIC-001");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redisTemplate).execute(any(), keysCaptor.capture(), eq("20"), eq(String.valueOf(Duration.ofHours(2).toSeconds())));
+        assertThat(keysCaptor.getValue()).containsExactly(
+                "panic:{PO-PANIC-001}:stock",
+                "panic:{PO-PANIC-001}:buyer:20"
+        );
+        assertThat(view.status()).isEqualTo("抢购处理中");
     }
 
     @Test
@@ -770,6 +798,13 @@ class BusinessDemoServicePersistenceTest {
         order.setSource("JMeter 高并发抢购压测");
         order.setPushedTo("采购方 20 已抢购成功，等待供应商确认");
         order.setCreateTime(java.time.LocalDateTime.now());
+        return order;
+    }
+
+    private PurchaseOrder panicBuyingOrder() {
+        PurchaseOrder order = purchaserClaimedOrder();
+        order.setStatus("待抢购");
+        order.setDriverId(null);
         return order;
     }
 

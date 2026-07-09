@@ -2,10 +2,15 @@ package com.material.auth.config;
 
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
+import org.redisson.config.ClusterServersConfig;
 import org.redisson.config.Config;
+import org.redisson.config.SingleServerConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
+
+import java.util.List;
 
 @Configuration
 public class RedissonConfig {
@@ -17,10 +22,49 @@ public class RedissonConfig {
      * 输出：返回 RedissonClient，也就是这个方法处理后的结果。
      */
     @Bean(destroyMethod = "shutdown")
-    public RedissonClient redissonClient(@Value("${spring.data.redis.host:localhost}") String host,
+    public RedissonClient redissonClient(@Value("${spring.data.redis.cluster.nodes:}") List<String> clusterNodes,
+                                         @Value("${spring.data.redis.password:}") String password,
+                                         @Value("${spring.data.redis.host:localhost}") String host,
                                          @Value("${spring.data.redis.port:6379}") int port) {
+        return Redisson.create(redissonConfig(clusterNodes, password, host, port));
+    }
+
+    Config redissonConfig(List<String> clusterNodes, String password, String host, int port) {
         Config config = new Config();
-        config.useSingleServer().setAddress("redis://" + host + ":" + port);
-        return Redisson.create(config);
+        List<String> nodeAddresses = normalizedClusterNodes(clusterNodes);
+        if (!nodeAddresses.isEmpty()) {
+            ClusterServersConfig clusterConfig = config.useClusterServers()
+                    .addNodeAddress(nodeAddresses.toArray(String[]::new));
+            if (StringUtils.hasText(password)) {
+                clusterConfig.setPassword(password);
+            }
+            return config;
+        }
+
+        SingleServerConfig singleServerConfig = config.useSingleServer()
+                .setAddress(normalizeRedisAddress(host + ":" + port));
+        if (StringUtils.hasText(password)) {
+            singleServerConfig.setPassword(password);
+        }
+        return config;
+    }
+
+    private List<String> normalizedClusterNodes(List<String> clusterNodes) {
+        if (clusterNodes == null) {
+            return List.of();
+        }
+        return clusterNodes.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .map(this::normalizeRedisAddress)
+                .toList();
+    }
+
+    private String normalizeRedisAddress(String address) {
+        String trimmed = address.trim();
+        if (trimmed.startsWith("redis://") || trimmed.startsWith("rediss://")) {
+            return trimmed;
+        }
+        return "redis://" + trimmed;
     }
 }
