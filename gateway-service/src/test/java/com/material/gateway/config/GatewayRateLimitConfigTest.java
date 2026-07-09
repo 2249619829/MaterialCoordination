@@ -19,6 +19,11 @@ class GatewayRateLimitConfigTest {
     void applicationYamlConfiguresRequestRateLimiterForImportantRoutes() {
         Properties properties = loadGatewayProperties();
 
+        assertThat(properties.getProperty("spring.data.redis.cluster.nodes"))
+                .isEqualTo("${REDIS_CLUSTER_NODES:localhost:6379,localhost:6380,localhost:6381,localhost:6382,localhost:6383,localhost:6384}");
+        assertThat(properties.getProperty("spring.data.redis.cluster.max-redirects"))
+                .isEqualTo("${REDIS_CLUSTER_MAX_REDIRECTS:3}");
+
         assertThat(properties.getProperty("spring.cloud.gateway.server.webflux.routes[0].id"))
                 .isEqualTo("auth-public");
         assertThat(properties.getProperty("spring.cloud.gateway.server.webflux.routes[0].filters[0].name"))

@@ -47,13 +47,13 @@ Windows / WSL2 迁移启动步骤见：[docs/windows-setup.md](docs/windows-setu
 
 ### 新电脑推荐启动流程
 
-Docker Compose 会启动 MySQL、Redis、RabbitMQ、Nacos 这些中间件；`auth-service`、`gateway-service` 和前端仍在本机通过 JDK 21、Maven、Python 启动。
+Docker Compose 会启动 MySQL、Redis Cluster、RabbitMQ、Nacos 这些中间件；`auth-service`、`gateway-service` 和前端仍在本机通过 JDK 21、Maven、Python 启动。
 
 ```bash
 git clone https://github.com/2249619829/MaterialCoordination.git
 cd MaterialCoordination
 
-docker compose up -d mysql redis rabbitmq nacos
+docker compose up -d
 docker compose ps
 
 export MYSQL_PASSWORD=root
@@ -65,7 +65,7 @@ scripts/smoke-test.sh
 
 如果 `scripts/start-local.sh` 提示 Java 路径不存在，先确认本机 `java -version` 是 21，再按本机 JDK 安装位置调整 `use-java21.sh`，或参考 [docs/startup.md](docs/startup.md) 手动启动两个后端服务。
 
-如果本机 MySQL、Redis、RabbitMQ、Nacos 已经启动，推荐直接使用脚本启动应用：
+如果本机 MySQL、Redis Cluster、RabbitMQ、Nacos 已经启动，推荐直接使用脚本启动应用：
 
 ```bash
 cd MaterialCoordination
@@ -89,13 +89,13 @@ scripts/start-local.sh --keep-alive
 
 ### 1. 启动中间件
 
-本项目支持本地中间件或 Docker Compose。当前开发环境使用本地 MySQL、Redis、RabbitMQ、Nacos。
+本项目支持本地中间件或 Docker Compose。当前开发环境使用本地 MySQL、Redis Cluster、RabbitMQ、Nacos。
 配置项支持环境变量覆盖，首次运行可参考 `.env.example`。
 
 使用 Docker Compose 启动中间件时：
 
 ```bash
-docker compose up -d mysql redis rabbitmq nacos
+docker compose up -d
 export MYSQL_PASSWORD=root
 export NACOS_DISCOVERY_IP=127.0.0.1
 ```
@@ -105,7 +105,7 @@ export NACOS_DISCOVERY_IP=127.0.0.1
 常用端口：
 
 - MySQL：`3306`
-- Redis：`6379`
+- Redis Cluster：`6379-6384`（默认 `REDIS_CLUSTER_NODES=localhost:6379,...,localhost:6384`）
 - RabbitMQ：`5672`
 - RabbitMQ Management：`15672`
 - Nacos：`8848`

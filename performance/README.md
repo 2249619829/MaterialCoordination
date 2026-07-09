@@ -17,6 +17,8 @@ THREADS=100 RAMP_UP=2 STOCK=1 ./performance/run-panic-buy.sh
 - `STOCK`：Redis 抢购名额。`1` 用于防超卖场景，`100/500` 用于吞吐场景。
 - `ORDER_ID`：压测订单编号，默认 `PO-PERF-PANIC-0001`。
 
+脚本默认用 `redis-cli -c` 连接 Redis Cluster 的 `127.0.0.1:6379` seed 节点，并扫描 `6379-6384` 清理同一订单的 hash-tag 抢购 key。
+
 结果输出：
 
 - `performance/results/<run_id>/result.jtl`：JMeter 原始结果。

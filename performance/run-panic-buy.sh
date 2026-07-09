@@ -16,6 +16,7 @@ MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-material_coordination}"
 REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_CLUSTER_PORTS="${REDIS_CLUSTER_PORTS:-6379 6380 6381 6382 6383 6384}"
 REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 
 RUN_ID="$(date +%Y%m%d%H%M%S)-t${THREADS}-s${STOCK}"
@@ -32,10 +33,12 @@ if [[ -n "$MYSQL_PASSWORD" ]]; then
   mysql_args=(-u"$MYSQL_USERNAME" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE")
 fi
 
-redis_args=(-h "$REDIS_HOST" -p "$REDIS_PORT")
+redis_args=(-c -h "$REDIS_HOST" -p "$REDIS_PORT")
 if [[ -n "$REDIS_PASSWORD" ]]; then
-  redis_args=(-h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD")
+  redis_args=(-c -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD")
 fi
+redis_stock_key="panic:{${ORDER_ID}}:stock"
+redis_buyer_pattern="panic:{${ORDER_ID}}:buyer:*"
 
 printf 'username,password\n' > "$CSV_PATH"
 for i in $(seq 1 "$ACCOUNT_COUNT"); do
@@ -46,11 +49,17 @@ mysql \
   --init-command="SET @perf_account_count=${ACCOUNT_COUNT}; SET @perf_account_prefix='${ACCOUNT_PREFIX}'; SET @perf_order_id='${ORDER_ID}';" \
   "${mysql_args[@]}" < "$BASE_DIR/performance/sql/prepare-panic-buy.sql"
 
-redis-cli "${redis_args[@]}" DEL "panic:stock:${ORDER_ID}" >/dev/null
-redis-cli "${redis_args[@]}" --scan --pattern "panic:buyer:${ORDER_ID}:*" | while read -r key; do
+redis-cli "${redis_args[@]}" DEL "$redis_stock_key" >/dev/null
+for scan_port in $REDIS_CLUSTER_PORTS; do
+  scan_args=(-c -h "$REDIS_HOST" -p "$scan_port")
+  if [[ -n "$REDIS_PASSWORD" ]]; then
+    scan_args=(-c -h "$REDIS_HOST" -p "$scan_port" -a "$REDIS_PASSWORD")
+  fi
+  redis-cli "${scan_args[@]}" --scan --pattern "$redis_buyer_pattern"
+done | while read -r key; do
   [[ -n "$key" ]] && redis-cli "${redis_args[@]}" DEL "$key" >/dev/null
 done
-redis-cli "${redis_args[@]}" SETEX "panic:stock:${ORDER_ID}" 7200 "$STOCK" >/dev/null
+redis-cli "${redis_args[@]}" SETEX "$redis_stock_key" 7200 "$STOCK" >/dev/null
 
 rm -rf "$HTML_DIR"
 

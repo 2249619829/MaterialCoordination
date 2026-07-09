@@ -8,13 +8,13 @@
 
 ### 新电脑使用 Docker 启动中间件
 
-Docker Compose 只负责启动 MySQL、Redis、RabbitMQ、Nacos；后端和前端仍在本机运行，所以还需要 JDK 21、Maven 和 Python 3。
+Docker Compose 只负责启动 MySQL、Redis Cluster、RabbitMQ、Nacos；后端和前端仍在本机运行，所以还需要 JDK 21、Maven 和 Python 3。
 
 ```bash
 git clone https://github.com/2249619829/MaterialCoordination.git
 cd MaterialCoordination
 
-docker compose up -d mysql redis rabbitmq nacos
+docker compose up -d
 docker compose ps
 
 export MYSQL_PASSWORD=root
@@ -30,7 +30,7 @@ scripts/smoke-test.sh
 
 ### 本机已有中间件
 
-如果你的 MySQL、Redis、RabbitMQ、Nacos 已经在本机启动，推荐直接用脚本启动和验证：
+如果你的 MySQL、Redis Cluster、RabbitMQ、Nacos 已经在本机启动，推荐直接用脚本启动和验证：
 
 ```bash
 cd MaterialCoordination
@@ -113,7 +113,7 @@ http://127.0.0.1:8088
 - JDK 21
 - Maven
 - MySQL 8.x
-- Redis
+- Redis Cluster
 - RabbitMQ
 - Nacos
 - Python 3
@@ -126,7 +126,8 @@ http://127.0.0.1:8088
 | 服务 | 端口 |
 | --- | --- |
 | MySQL | `3306` |
-| Redis | `6379` |
+| Redis Cluster | `6379-6384` |
+| Redis Cluster bus | `16379-16384` |
 | RabbitMQ | `5672` |
 | RabbitMQ 管理页面 | `15672` |
 | Nacos | `8848` |
@@ -144,6 +145,7 @@ http://127.0.0.1:8088
 ```bash
 lsof -nP -iTCP:3306 -sTCP:LISTEN
 lsof -nP -iTCP:6379 -sTCP:LISTEN
+lsof -nP -iTCP:6384 -sTCP:LISTEN
 lsof -nP -iTCP:5672 -sTCP:LISTEN
 lsof -nP -iTCP:8848 -sTCP:LISTEN
 ```
@@ -154,7 +156,7 @@ lsof -nP -iTCP:8848 -sTCP:LISTEN
 
 ```bash
 cd MaterialCoordination
-docker compose up -d mysql redis rabbitmq nacos
+docker compose up -d
 ```
 
 查看容器状态：
@@ -169,6 +171,12 @@ Docker Compose 默认账号密码：
 | --- | --- | --- |
 | MySQL | `root` | `root` |
 | RabbitMQ | `guest` | `guest` |
+
+Redis Cluster 默认由 `redis-node-1` 到 `redis-node-6` 组成 3 主 3 从，应用默认读取：
+
+```bash
+REDIS_CLUSTER_NODES=localhost:6379,localhost:6380,localhost:6381,localhost:6382,localhost:6383,localhost:6384
+```
 
 使用 Docker MySQL 启动后端前，需要在启动后端的终端里设置：
 
@@ -564,4 +572,4 @@ docker compose down
 docker compose down -v
 ```
 
-注意：`docker compose down -v` 会删除 MySQL、Redis、RabbitMQ、Nacos 的本地数据。
+注意：`docker compose down -v` 会删除 MySQL、Redis Cluster、RabbitMQ、Nacos 的本地数据。
