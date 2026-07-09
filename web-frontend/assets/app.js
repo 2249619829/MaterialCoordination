@@ -7,7 +7,7 @@ import {
   defaultAuthUsername,
   defaultReviewText,
   loginTemplate,
-} from "./js/views.js?v=20260630-start-screen";
+} from "./js/views.js?v=20260706-nearby-cards-v2";
 
 /**
  * 作用：把当前采购清单保存到浏览器本地存储。
@@ -126,6 +126,41 @@ async function requestJson(path, options = {}) {
     throw new Error(payload?.message || `请求失败：${response.status}`);
   }
   return payload.data;
+}
+
+function upsertListItem(list, item, key = "id") {
+  if (!item?.[key]) return list;
+  const index = list.findIndex((current) => current?.[key] === item[key]);
+  if (index < 0) return [item, ...list];
+  return list.map((current, currentIndex) => (currentIndex === index ? { ...current, ...item } : current));
+}
+
+function updateExistingListItem(list, item, key = "id") {
+  if (!item?.[key]) return list;
+  return list.map((current) => (current?.[key] === item[key] ? { ...current, ...item } : current));
+}
+
+function removeListItem(list, id, key = "id") {
+  return list.filter((item) => item?.[key] !== id);
+}
+
+function applyDriverOrderUpdate(order) {
+  if (!order?.id) return;
+  const driverOwnedStatuses = ["司机已接单", "运输中", "已完成"];
+  if (driverOwnedStatuses.includes(order.status) || order.driverId) {
+    state.driverOrders = upsertListItem(state.driverOrders, order);
+  } else {
+    state.driverOrders = removeListItem(state.driverOrders, order.id);
+  }
+  state.transportHall = order.status === "待司机接单"
+    ? upsertListItem(state.transportHall, order)
+    : removeListItem(state.transportHall, order.id);
+  state.pushOrders = updateExistingListItem(state.pushOrders, order);
+}
+
+function applyDriverFollowUpdate(follow) {
+  if (!follow?.purchaserId) return;
+  state.follows = upsertListItem(state.follows, follow, "purchaserId");
 }
 
 /**
@@ -695,9 +730,9 @@ async function submitSupplierRfqQuote(event) {
 async function claimOrder(orderId) {
   await runAction(`claim-order:${orderId}`, async () => {
     try {
-      await requestJson(`/api/transport-orders/${orderId}/claim`, { method: "POST" });
+      const order = await requestJson(`/api/transport-orders/${orderId}/claim`, { method: "POST" });
+      applyDriverOrderUpdate(order);
       showToast("抢单成功，订单状态已更新");
-      await loadRoleData();
     } catch (error) {
       showToast(error.message || "抢单失败");
     }
@@ -749,9 +784,9 @@ async function rejectSupplierOrder(orderId) {
 async function startTransport(orderId) {
   await runAction(`start-transport:${orderId}`, async () => {
     try {
-      await requestJson(`/api/transport-orders/${orderId}/start`, { method: "POST" });
+      const order = await requestJson(`/api/transport-orders/${orderId}/start`, { method: "POST" });
+      applyDriverOrderUpdate(order);
       showToast("订单已进入运输中");
-      await loadRoleData();
     } catch (error) {
       showToast(error.message || "开始运输失败");
     }
@@ -767,9 +802,9 @@ async function startTransport(orderId) {
 async function completeTransport(orderId) {
   await runAction(`complete-transport:${orderId}`, async () => {
     try {
-      await requestJson(`/api/transport-orders/${orderId}/complete`, { method: "POST" });
+      const order = await requestJson(`/api/transport-orders/${orderId}/complete`, { method: "POST" });
+      applyDriverOrderUpdate(order);
       showToast("订单已完成，可以发起三方评价");
-      await loadRoleData();
     } catch (error) {
       showToast(error.message || "完成运输失败");
     }
@@ -810,7 +845,6 @@ export async function uploadTransportLocation(orderId) {
         }),
       });
       const refreshTracking = state.trackingModal?.order?.id === orderId || state.trackingModal?.tracking?.orderId === orderId;
-      await loadRoleData();
       if (refreshTracking) {
         await openTrackingModal(orderId);
       }
@@ -829,12 +863,12 @@ export async function uploadTransportLocation(orderId) {
  */
 async function followPurchaser(purchaserId) {
   try {
-    await requestJson("/api/drivers/follows", {
+    const follow = await requestJson("/api/drivers/follows", {
       method: "POST",
       body: JSON.stringify({ targetId: purchaserId }),
     });
+    applyDriverFollowUpdate(follow);
     showToast("关注成功，后续可接收该采购方推送");
-    await loadRoleData();
   } catch (error) {
     showToast(error.message || "关注失败");
   }
@@ -1082,7 +1116,6 @@ async function markAttendance(online) {
   try {
     state.attendance = await requestJson(`/api/drivers/attendance?online=${online}`, { method: "POST" });
     showToast(online ? "已上线，BitMap 出勤位已写入" : "已离线，BitMap 出勤位已清理");
-    await loadRoleData();
   } catch (error) {
     showToast(error.message || "更新出勤失败");
   }
@@ -1097,9 +1130,9 @@ async function markAttendance(online) {
 async function markPushRead(orderId) {
   await runAction(`read-push:${orderId}`, async () => {
     try {
-      await requestJson(`/api/transport-orders/push/${orderId}/read`, { method: "POST" });
+      const order = await requestJson(`/api/transport-orders/push/${orderId}/read`, { method: "POST" });
+      applyDriverOrderUpdate(order);
       showToast("推送已标记为已读");
-      await loadRoleData();
     } catch (error) {
       showToast(error.message || "标记已读失败");
     }

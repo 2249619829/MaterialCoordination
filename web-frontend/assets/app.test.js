@@ -246,8 +246,10 @@ test("order cards keep route compact and hide verbose flow metadata", () => {
   assert.equal(cardHtml.includes("关注采购方的司机"), false);
   assert.equal(cardHtml.includes("Bulk supplier warehouse 0736"), false);
   assert.equal(cardHtml.includes("Bulk emergency purchasing center 05736"), false);
-  assert.equal(cardHtml.includes("Shanghai, China"), true);
-  assert.equal(cardHtml.includes("121.5440, 31.2210"), true);
+  assert.equal(cardHtml.includes("Shanghai, China"), false);
+  assert.equal(cardHtml.includes("121.5440, 31.2210"), false);
+  assert.equal(cardHtml.includes("route-line"), false);
+  assert.equal(cardHtml.includes("order-route-coords"), false);
   assert.match(cardHtml, /data-order-tracking="PO-VERBOSE-001"/);
   assert.match(cardHtml, /data-order-timeline="PO-VERBOSE-001"/);
 });
@@ -400,6 +402,9 @@ test("uploadTransportLocation uses browser geolocation and posts the driver node
     latitude: 31.230416,
     remark: "到达运输节点",
   });
+  assert.equal(calls.some((call) => call.url.endsWith("/api/transport-orders/hall")), false);
+  assert.equal(calls.some((call) => call.url.endsWith("/api/transport-orders/mine")), false);
+  assert.equal(calls.some((call) => call.url.endsWith("/api/transport-orders/push")), false);
   assert.equal(state.toast, "到达节点已上传");
 });
 

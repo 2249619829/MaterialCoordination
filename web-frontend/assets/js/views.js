@@ -1326,17 +1326,19 @@ function rankingList(title, subtitle, items, mark, rankingKey) {
  */
 export function nearbySuppliersPanel() {
   return `
-    <div class="panel ranking-panel">
+    <div class="panel nearby-suppliers-panel">
       <div class="panel-head"><div><h2>附近供应商</h2><div class="muted">Redis GEO 按应急地点距离优先匹配供应商。</div></div></div>
-      <div class="panel-body ranking-list">
+      <div class="panel-body nearby-supplier-list">
         ${
           state.nearbySuppliers.length
             ? state.nearbySuppliers.map((item) => `
-                <div class="ranking-row">
-                  <span class="rank-no">${Number(item.distanceKm).toFixed(1)} KM</span>
-                  <strong>${escapeHtml(item.companyName)}</strong>
-                  <span class="muted">${escapeHtml(item.address)}</span>
-                  <span class="chip green">${escapeHtml(item.ratingScore)} 分</span>
+                <div class="nearby-supplier-card">
+                  <span class="nearby-distance"><strong>${Number(item.distanceKm).toFixed(1)}</strong><small>KM</small></span>
+                  <span class="nearby-supplier-main">
+                    <strong>${escapeHtml(item.companyName)}</strong>
+                    <span>${escapeHtml(item.address)}</span>
+                  </span>
+                  <span class="chip green nearby-rating">${escapeHtml(item.ratingScore)} 分</span>
                 </div>
               `).join("")
             : '<div class="empty">暂无附近供应商。</div>'
@@ -2113,8 +2115,6 @@ export function renderOrderCard(order, claimable) {
         ${order.status === "已完成" ? `<span class="chip ${order.acceptanceStatus === "待验收" ? "amber" : "green"}">${escapeHtml(order.acceptanceStatus || "待验收")}</span>` : ""}
         ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<span class="chip ${paymentStatusClass(order.paymentStatus)}">${escapeHtml(order.paymentStatus || "待付款")}</span>` : ""}
       </div>
-      ${orderStatusProgress(order.status)}
-      ${orderRouteLine(order)}
       ${order.status === "已完成" ? `<div class="form-note">${escapeHtml(order.acceptanceSummary || "运输完成后由采购方验收签收")}</div>` : ""}
       ${order.status === "已完成" && order.acceptanceStatus && order.acceptanceStatus !== "待验收" ? `<div class="form-note">${escapeHtml(order.paymentSummary || "验收完成后由采购方登记付款凭证")}</div>` : ""}
       <div class="order-actions">

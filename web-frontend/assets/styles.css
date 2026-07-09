@@ -2077,6 +2077,85 @@ tbody tr:hover {
   gap: 12px;
 }
 
+.nearby-suppliers-panel {
+  margin-bottom: 18px;
+}
+
+.nearby-supplier-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nearby-supplier-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.nearby-supplier-card:hover {
+  border-color: #cfe1f6;
+  box-shadow: 0 10px 22px rgba(16, 32, 51, 0.07);
+  transform: translateY(-1px);
+}
+
+.nearby-distance {
+  width: 64px;
+  min-height: 56px;
+  border-radius: 8px;
+  background: #eef6ff;
+  color: var(--blue);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  line-height: 1;
+  font-weight: 850;
+}
+
+.nearby-distance strong {
+  font-size: 22px;
+}
+
+.nearby-distance small {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.nearby-supplier-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.nearby-supplier-main strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.nearby-supplier-main > span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.nearby-rating {
+  justify-self: end;
+}
+
 .ranking-board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2515,6 +2594,12 @@ textarea {
   min-height: 104px;
 }
 
+@media (max-width: 1360px) {
+  .nearby-supplier-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1180px) {
   .login-screen {
     grid-template-columns: minmax(0, 1fr) minmax(390px, 0.78fr);
@@ -2560,6 +2645,10 @@ textarea {
 
   .filter-panel .toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .nearby-supplier-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2709,6 +2798,7 @@ textarea {
   .rfq-quote-grid,
   .rfq-inline-form,
   .dispatch-board,
+  .nearby-supplier-list,
   .ranking-board,
   .ranking-list,
   .supplier-stats,
@@ -2837,6 +2927,16 @@ textarea {
     justify-self: start;
     margin-top: -5px;
     font-size: 13px;
+  }
+
+  .nearby-supplier-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .nearby-rating {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .tracking-place {
