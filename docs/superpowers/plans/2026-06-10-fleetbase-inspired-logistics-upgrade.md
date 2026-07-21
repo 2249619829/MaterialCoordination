@@ -54,7 +54,6 @@
 - Modify: `README.md`
 - Modify: `docs/architecture.md`
 - Modify: `docs/api.md`
-- Modify: `docs/performance.md`
 
 - [x] Update project name and background to emergency logistics.
 - [x] Document Fleetbase-inspired order pool, places, tracking, and high-concurrency claim flow.

@@ -217,8 +217,6 @@ scripts/start-openresty.sh
 
 接口清单见：[docs/api.md](docs/api.md)。
 
-JMeter 压测报告见：[docs/performance.md](docs/performance.md)。
-
 项目演示路线和面试讲解稿见：[docs/demo-guide.md](docs/demo-guide.md)。
 
 项目阶段拆分和迭代记录见：[docs/iteration-history.md](docs/iteration-history.md)。

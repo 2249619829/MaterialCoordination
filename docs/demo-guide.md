@@ -112,11 +112,11 @@ POST /api/transport-orders/{orderId}/location
 打开：
 
 - `docs/architecture.md`
-- `docs/performance.md`
+- `docs/project-code-guide.md`
 
 讲解话术：
 
-> 这里是项目架构说明和压测报告。我的重点不是只做页面，而是把高并发链路、异步消息、缓存、订单状态机和物流追踪这些后端能力都串起来。
+> 这里是项目架构说明和代码功能指南。我的重点不是只做页面，而是把高并发链路、异步消息、缓存、订单状态机和物流追踪这些后端能力都串起来。
 
 ## 15 分钟深度演示路线
 
@@ -280,7 +280,6 @@ destinationLatitude
 5. `auth-service/src/main/java/com/material/auth/mq/OrderClaimedConsumer.java`：采购抢购和司机抢单异步消费。
 6. `auth-service/src/main/java/com/material/auth/entity/PurchaseOrder.java`：订单实体和路线字段。
 7. `sql/init/01_schema.sql`：表结构和索引。
-8. `docs/performance.md`：压测数据和讲法。
 
 ## 现场演示命令
 
